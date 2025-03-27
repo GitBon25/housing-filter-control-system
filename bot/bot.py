@@ -15,6 +15,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
+rooms, location, price, area = "", "", "", ""
 
 
 class HousingBot:
@@ -44,6 +45,7 @@ class HousingBot:
 
     def _format_response(self, criteria: dict) -> str:
         """Форматирование ответа"""
+        global rooms, location, price, area
         rooms = criteria['rooms']
         location = criteria['location']
         price = criteria['price']
@@ -69,7 +71,7 @@ def main():
         filters.TEXT & ~filters.COMMAND, bot.handle_message))
 
     # Запуск
-    logging.info("Бот запущен")
+    logging.info("-----------------------Бот запущен-----------------------")
     app.run_polling()
 
 

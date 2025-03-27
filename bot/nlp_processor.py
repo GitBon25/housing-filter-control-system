@@ -86,11 +86,14 @@ class HousingCriteriaExtractor:
         except Exception:
             return city
 
-    def _extract_rooms(self, text: str) -> int:
+    def _extract_rooms(self, text: str) -> int | str:
         text_lower = text.lower()
         
-        if any(word in text_lower for word in ['студию', 'однушку']):
+        if any(word in text_lower for word in ['однушку', 'однушка']):
             return 1
+        
+        if any(word in text_lower for word in ['студию', 'студия']):
+            return "st"
             
         for pattern in self.rooms_patterns:
             match = re.search(pattern, text_lower)
@@ -145,6 +148,6 @@ class HousingCriteriaExtractor:
         return None
 
     def _extract_area(self, text: str) -> int:
-        match = re.search(r'(\d+)\s*(?:м²|кв\.?м|квадратных|метр)', 
+        match = re.search(r'(\d+)\s*(?:м²|кв\.?м\.|м\.|квадратных|метр)', 
                          text, re.IGNORECASE)
         return int(match.group(1)) if match else None
