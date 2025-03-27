@@ -63,6 +63,5 @@ headers = {
 url = 'https://vladivostok.domclick.ru/search'
 
 r = requests.get(url, params=payload, cookies=cookies,headers=headers)
-print(r.content)
-print(r.url)
-print(r.json)
+with open('url.html', 'w', encoding='utf-8') as f:
+    f.write(r.content.decode('utf-8'))
