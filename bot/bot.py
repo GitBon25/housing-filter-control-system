@@ -8,8 +8,9 @@ from telegram.ext import (
 )
 from config import TELEGRAM_TOKEN
 from nlp_processor import HousingCriteriaExtractor
-import logging
-from url import find_flats
+import logging, sys, os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from services.url import find_flats
 
 # Настройка логирования
 logging.basicConfig(
