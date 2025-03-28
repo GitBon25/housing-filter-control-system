@@ -2,10 +2,27 @@ import requests
 import logging
 
 
-def find_flats(rooms, price, area):
-    url = "https://bff-search-web.domclick.ru/api/offers/v1"
+
+def find_flats(rooms, price, area, location):
+    url1 = "https://geo-service.domclick.ru/research/api/v1/autocomplete/regions"
+    params = {"name": location}
+    headers = {
+        "User-Agent": "Mozilla/5.0"
+    }
+
+    response = requests.get(url1, params=params, headers=headers)
+    data = response.json()
+
+    items = data.get("answer", {}).get("items", [])
+
+    for item in items:
+        if item.get("name") == location:
+            guid = item.get("guid")
+            break
+    
+    url2 = "https://bff-search-web.domclick.ru/api/offers/v1"
     params = {
-        "address": "09b74a8a-e195-493d-b776-fb00c9b763bd",
+        "address": guid,
         "offset": 0,
         "limit": 5,
         "sort": "published",
@@ -27,7 +44,7 @@ def find_flats(rooms, price, area):
 
     logging.info(f"🔍 Параметры запроса: {params}")
 
-    response = requests.get(url, headers=headers, params=params)
+    response = requests.get(url2, headers=headers, params=params)
 
     logging.info(f"🌐 URL запроса: {response.url}")
 
@@ -50,7 +67,6 @@ def find_flats(rooms, price, area):
         floor = item.get("objectInfo", {}).get("floor", "—")
         floors_total = item.get("house", {}).get("floors", "—")
 
-        # Обрезка описания до 300 символов
         full_description = item.get(
             "description", "").replace('\n', ' ').strip()
         description = (
