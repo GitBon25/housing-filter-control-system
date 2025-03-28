@@ -1,4 +1,5 @@
 import requests
+import logging
 
 
 def find_flats(rooms, price, area):
@@ -24,11 +25,11 @@ def find_flats(rooms, price, area):
         "Referer": "https://domclick.ru/",
     }
 
-    print("🔍 Параметры запроса:", params)
+    logging.info(f"🔍 Параметры запроса: {params}")
 
     response = requests.get(url, headers=headers, params=params)
 
-    print("🌐 URL запроса:", response.url)
+    logging.info(f"🌐 URL запроса: {response.url}")
 
     if response.status_code != 200:
         return [{"caption": f"Ошибка запроса: {response.status_code}", "photo_url": ""}]
