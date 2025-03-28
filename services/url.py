@@ -16,7 +16,7 @@ def find_flats(rooms, price, area, location):
     items = data.get("answer", {}).get("items", [])
 
     for item in items:
-        if item.get("name") == location:
+        if item.get("name").lower() == location.lower():
             guid = item.get("guid")
             break
     
