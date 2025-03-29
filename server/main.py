@@ -1,20 +1,18 @@
 import uvicorn
-from taskQueue import add_task, get_res
+from taskQueue import add_task, get_task_by_id
 from fastapi import FastAPI
 
 
 app = FastAPI()
 
-@app.post("/get-housing")
+@app.post("/set-task")
 async def housing(data: str):
-    id = add_task(data)
-    return {
-        "id": id
-    }
+    res = add_task(data)
+    return res
 
 @app.get("/task/{id}")
 async def task(id):
-    task = get_res(id)
+    task = get_task_by_id(id)
     return task
 
 if __name__ == "__main__":

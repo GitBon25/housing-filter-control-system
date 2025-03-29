@@ -1,0 +1,6 @@
+pip install natasha
+pip intsall uvicorn
+pip install redis
+pip install pymorphy2
+pip install FastApi
+pip install requests
