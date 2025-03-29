@@ -1,3 +1,4 @@
 server/__pycache__/*
+services/__pycache__/*
 bot/.env
 bot/config.py
