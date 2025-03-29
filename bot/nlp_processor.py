@@ -7,6 +7,7 @@ from natasha import (
 )
 import re
 import pymorphy2
+import logging
 
 
 class HousingCriteriaExtractor:
@@ -44,17 +45,29 @@ class HousingCriteriaExtractor:
             ]
         }
 
-    def extract_criteria(self, text: str) -> dict:
-        doc = self._process_text(text)
-        spans = self._get_normalized_spans(doc)
+        self.context = {}
 
-        return {
-            'rooms': self._extract_rooms(text),
-            'location': self._extract_location(spans, text),
-            'price': self._extract_price(text),
-            'area': self._extract_area(text),
-            'deal': self._extract_deal_type(text)
-        }
+    def extract_criteria(self, text: str) -> dict:
+        try:
+            doc = self._process_text(text)
+            spans = self._get_normalized_spans(doc)
+
+            result = {
+                'rooms': self._extract_rooms(text),
+                'location': self._extract_location(spans, text),
+                'price': self._extract_price(text),
+                'area': self._extract_area(text),
+                'deal': self._extract_deal_type(text)
+            }
+
+            for key, value in result.items():
+                if value is not None:
+                    self.context[key] = value
+
+            return self.context.copy()
+        except Exception as e:
+            logging.error(f"Ошибка при извлечении критериев: {e}")
+            return self.context.copy()
 
     def _process_text(self, text: str) -> Doc:
         doc = Doc(text)
@@ -91,6 +104,7 @@ class HousingCriteriaExtractor:
 
             return normalized
         except Exception:
+            logging.warning(f"Ошибка нормализации города: {city}")
             return city
 
     def _extract_rooms(self, text: str) -> int | str:
@@ -155,7 +169,7 @@ class HousingCriteriaExtractor:
         return None
 
     def _extract_area(self, text: str) -> int:
-        match = re.search(r'(\d+)\s*(?:м²|кв\.?м\.|м\.|квадратных|метр)', text, re.IGNORECASE)
+        match = re.search(r'(\d+)\s*(?:м²|кв\.?м\.|м\.|квадратных|метр|квадратов)', text, re.IGNORECASE)
         return int(match.group(1)) if match else None
 
     def _extract_deal_type(self, text: str) -> str:
