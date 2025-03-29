@@ -1,5 +1,5 @@
 import asyncio
-from taskQueue import get_last_task, update_task
+from server.services.taskQueue import get_last_task, update_task
 import logging, sys, os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from bot.nlp_processor import HousingCriteriaExtractor

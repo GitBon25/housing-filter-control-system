@@ -3,3 +3,4 @@ services/__pycache__/*
 bot/__pycache__/*
 bot/.env
 bot/config.py
+qdrant_storage/*
