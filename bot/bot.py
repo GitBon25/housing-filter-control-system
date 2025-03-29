@@ -67,7 +67,8 @@ class HousingBot:
         location = criteria['location']
         price = criteria['price']
         area = criteria['area']
-        return find_flats(rooms, price, area, location)
+        deal = criteria.get('deal', 'sale')
+        return find_flats(rooms, price, area, location, deal=deal)
 
 
 def main():

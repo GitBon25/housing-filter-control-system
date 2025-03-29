@@ -3,7 +3,7 @@ import logging
 
 
 
-def find_flats(rooms, price, area, location):
+def find_flats(rooms, price, area, location, deal):
     url1 = "https://geo-service.domclick.ru/research/api/v1/autocomplete/regions"
     params = {"name": location}
     headers = {
@@ -21,16 +21,21 @@ def find_flats(rooms, price, area, location):
             break
     
     url2 = "https://bff-search-web.domclick.ru/api/offers/v1"
+    if deal == 'rent':
+        price_key = "rent_price__lte"
+    else:
+        price_key = "sale_price__lte"
+
     params = {
         "address": guid,
         "offset": 0,
         "limit": 5,
         "sort": "published",
         "sort_dir": "desc",
-        "deal_type": "sale",
+        "deal_type": deal,
         "category": "living",
         "offer_type": ["flat", "layout"],
-        "sale_price__lte": price,
+        price_key: price,
         "rooms": rooms,
         "area_lte": area
     }
@@ -77,7 +82,7 @@ def find_flats(rooms, price, area, location):
         photo_full = f"https://img.dmclk.ru{photo_url}" if photo_url else ""
 
         caption = (
-            f"🏠 Квартира #{i}\n"
+            f"🏠 Квартира #{i}, {"аренда" if deal == "rent" else "покупка"}\n"
             f"📍 {address}\n"
             f"💰 {flat_price:,} ₽\n"
             f"📐 {flat_area} м², Комнат: {flat_rooms if flat_rooms != 0 else "Студия"}\n"

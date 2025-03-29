@@ -16,34 +16,44 @@ class HousingCriteriaExtractor:
         self.emb = NewsEmbedding()
         self.ner_tagger = NewsNERTagger(self.emb)
         self.morph = pymorphy2.MorphAnalyzer()
-        
+
         self.city_aliases = {
             'спб': 'Санкт-Петербург',
             'мск': 'Москва',
             'нск': 'Новосибирск'
         }
-        
+
         self.price_patterns = [
             r'(?:до|за)\s*(\d+)\s*(?:млн|миллион|тыс|тысяч)',
-            r'цена\s*[:]?\s*(\d+)\s*(?:млн|миллион|тыс|тысяч)',
+            r'цена\s*[:]??\s*(\d+)\s*(?:млн|миллион|тыс|тысяч)',
             r'(\d+)\s*(?:млн|миллион|тыс|тысяч)\s*(?:руб|р)'
         ]
-        
+
         self.rooms_patterns = [
             r'(\d+)[\s-]*(?:комнатн|к|комн|комнат|комнаты)',
             r'(?:одно|двух|трех|четырех|пяти)(?:комнатн|комнатной|комнатную)',
             r'(?:студи[юя]|однушк[ау])'
         ]
 
+        self.intent_patterns = {
+            'rent': [
+                r'снять', r'аренд[ауовать]*', r'аренду', r'сда[её]тся', r'в аренду'
+            ],
+            'sale': [
+                r'купить', r'покупк[ау]', r'продаж[ауы]', r'прода[её]тся'
+            ]
+        }
+
     def extract_criteria(self, text: str) -> dict:
         doc = self._process_text(text)
         spans = self._get_normalized_spans(doc)
-        
+
         return {
             'rooms': self._extract_rooms(text),
             'location': self._extract_location(spans, text),
             'price': self._extract_price(text),
-            'area': self._extract_area(text)
+            'area': self._extract_area(text),
+            'deal': self._extract_deal_type(text)
         }
 
     def _process_text(self, text: str) -> Doc:
@@ -66,35 +76,32 @@ class HousingCriteriaExtractor:
         return spans
 
     def _normalize_city_name(self, city: str) -> str:
-        """Приводит название города к именительному падежу"""
         try:
-            # Обрабатываем слова через дефис (например, Ростов-на-Дону)
             if '-' in city:
                 parts = [self.morph.parse(part)[0].normal_form for part in city.split('-')]
                 normalized = '-'.join(parts)
             else:
                 parsed = self.morph.parse(city)[0]
                 normalized = parsed.normal_form
-            
-            # Проверяем алиасы
+
             normalized_lower = normalized.lower()
             for alias, full_name in self.city_aliases.items():
                 if alias == normalized_lower or full_name.lower() == normalized_lower:
                     return full_name
-            
+
             return normalized
         except Exception:
             return city
 
     def _extract_rooms(self, text: str) -> int | str:
         text_lower = text.lower()
-        
+
         if any(word in text_lower for word in ['однушку', 'однушка']):
             return 1
-        
+
         if any(word in text_lower for word in ['студию', 'студия']):
             return "st"
-            
+
         for pattern in self.rooms_patterns:
             match = re.search(pattern, text_lower)
             if match:
@@ -113,24 +120,24 @@ class HousingCriteriaExtractor:
         for span in spans:
             if span['type'] == 'LOC':
                 return span['normal']
-        
+
         text_lower = text.lower()
         for alias, city in self.city_aliases.items():
             if alias in text_lower:
                 return city
-                
+
         if 'москв' in text_lower:
             return 'Москва'
         if 'петербург' in text_lower or 'спб' in text_lower:
             return 'Санкт-Петербург'
         if 'новосибирск' in text_lower:
             return 'Новосибирск'
-            
+
         return None
 
     def _extract_price(self, text: str) -> int:
         text_lower = text.lower()
-        
+
         for pattern in self.price_patterns:
             match = re.search(pattern, text_lower)
             if match:
@@ -140,14 +147,21 @@ class HousingCriteriaExtractor:
                 elif 'тыс' in match.group(0) or 'тысяч' in match.group(0):
                     return int(amount * 1_000)
                 return int(amount)
-                
+
         match = re.search(r'(\d+)\s*(?:руб|р)', text_lower)
         if match:
             return int(match.group(1))
-            
+
         return None
 
     def _extract_area(self, text: str) -> int:
-        match = re.search(r'(\d+)\s*(?:м²|кв\.?м\.|м\.|квадратных|метр)', 
-                         text, re.IGNORECASE)
+        match = re.search(r'(\d+)\s*(?:м²|кв\.?м\.|м\.|квадратных|метр)', text, re.IGNORECASE)
         return int(match.group(1)) if match else None
+
+    def _extract_deal_type(self, text: str) -> str:
+        text = text.lower()
+        for deal_type, patterns in self.intent_patterns.items():
+            for pattern in patterns:
+                if re.search(pattern, text):
+                    return deal_type
+        return 'sale'
