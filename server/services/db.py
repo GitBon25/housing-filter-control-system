@@ -1,25 +1,44 @@
 import psycopg2
 from psycopg2 import sql
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine
 
-async def connect():
-    conn = psycopg2.connect(
-        user="postgres",
-        password="1234",
-        dbname="postgres",
-        host="localhost",
-        port="5432",
-    )
+env = {
+    "user":  "postgres",
+    "password": "1234",
+    "dbname": "postgres",
+    "host": "localhost",
+    "port": "5432"
+}
+
+url = "postgresql://" + env["user"] + ':' + env["password"] + "@" + env["host"] + "/" + env["dbname"]
+engine = create_engine(url)
+Session = sessionmaker(bind=engine)
+
+async def connect(config: dict = {}):
+    conf = env.copy()
+    conf.update(config)
+    
+    conn = psycopg2.connect(**conf)
     print("подключилось")
     return conn
 
-async def session():
-    # создай сессию
-    a =1
+async def session(config: dict = {}):
+    conf = env.copy()
+    conf.update(config)
+    
+    session = Session()
+    return session
 
-async def add_model(model):
-    conn = await connect()
-    cursor = conn.cursor()
-
-    table = model.tableName
-
-    conn.close()
+async def add_model(model, dbsession = None):
+    try:
+        if not session:
+            dbsession = await session()
+        dbsession.add(model)
+        dbsession.commit()
+    except Exception as e:
+        dbsession.rollback()
+    finally:
+        dbsession.close()
+    
+    
