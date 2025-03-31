@@ -3,3 +3,11 @@ services/__pycache__/*
 bot/__pycache__/*
 bot/.env
 bot/config.py
+qdrant_storage/*
+site/node_modules/
+site/dist/
+site/.vite/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
