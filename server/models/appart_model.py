@@ -1,15 +1,10 @@
-from sqlalchemy import Column, Integer, String, Date
+from sqlalchemy import Column, Integer, String, Numeric, ARRAY
 from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
 
-class ApartUrl(Base):
-    __tablename__ = "apartmentsURL"
-    id = Column(Integer, primary_key=True)
-    url = Column(String)
-    
 class Apart(Base):
-    tableName = "apartments"
+    __tablename__ = "apartments"
     
 
     id = Column(Integer, primary_key=True)
@@ -17,7 +12,7 @@ class Apart(Base):
     url = Column(String)
     price = Column(Integer)
     rooms = Column(Integer)
-    area = Column(Integer)
+    area = Column(Numeric)
     floor = Column(Integer)
     location = Column(String)
-    parsing_date = Column(Date)
+    pics = ARRAY(String)
