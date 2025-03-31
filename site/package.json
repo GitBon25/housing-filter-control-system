@@ -1,12 +1,10 @@
 {
   "name": "stack",
-  "private": true,
+  "private": false,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
-    "dev:server": "nodemon api/server.js",
-    "dev:client": "vite",
+    "dev": "vite",
     "build": "tsc && vite build"
   },
   "devDependencies": {
@@ -20,7 +18,7 @@
     "cors": "^2.8.5",
     "express": "^4.21.2"
   },
-  "description": "бла бла МОЙ СЙТ СУКИ",
+  "description": "ну сайт",
   "main": "index.js",
   "repository": {
     "type": "git",
@@ -31,5 +29,6 @@
   "bugs": {
     "url": "https://github.com/Reindotir/stack/issues"
   },
-  "homepage": "https://github.com/Reindotir/stack#readme"
+  "homepage": "https://github.com/Reindotir/stack#readme",
+  "keywords": []
 }

@@ -5,8 +5,6 @@ bot/.env
 bot/config.py
 qdrant_storage/*
 site/node_modules/
-
-
 site/dist/
 site/.vite/
 *.log
