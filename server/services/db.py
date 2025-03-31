@@ -15,7 +15,7 @@ url = "postgresql://" + env["user"] + ':' + env["password"] + "@" + env["host"] 
 engine = create_engine(url)
 Session = sessionmaker(bind=engine)
 
-async def connect(config: dict = {}):
+def connect(config: dict = {}):
     conf = env.copy()
     conf.update(config)
     
@@ -23,22 +23,20 @@ async def connect(config: dict = {}):
     print("подключилось")
     return conn
 
-async def session(config: dict = {}):
+def session(config: dict = {}):
     conf = env.copy()
     conf.update(config)
     
     session = Session()
     return session
-
-async def add_model(model, dbsession = None):
+def add_model(model, dbsession = session()):
     try:
-        if not session:
-            dbsession = await session()
         dbsession.add(model)
         dbsession.commit()
     except Exception as e:
-        dbsession.rollback()
+        print(e)
+        if dbsession: dbsession.rollback()
     finally:
-        dbsession.close()
+        if dbsession: dbsession.close()
     
     

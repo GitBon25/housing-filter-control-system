@@ -25,15 +25,16 @@ class HousingCriteriaExtractor:
         }
 
         self.price_patterns = [
-            r'(?:до|за)\s*(\d+)\s*(?:млн|миллион|тыс|тысяч)',
-            r'цена\s*[:]??\s*(\d+)\s*(?:млн|миллион|тыс|тысяч)',
-            r'(\d+)\s*(?:млн|миллион|тыс|тысяч)\s*(?:руб|р)'
+            r'(?:до|за|не больше|не выше)\s*([\d\s]+)[\s]*(?:млн|миллион|тыс|тысяч)',
+            r'цена\s*[:]??\s*([\d\s]+)[\s]*(?:млн|миллион|тыс|тысяч)',
+            r'([\d\s]+)[\s]*(?:млн|миллион|тыс|тысяч)[\s]*(?:руб|р)?'
         ]
 
         self.rooms_patterns = [
             r'(\d+)[\s-]*(?:комнатн|к|комн|комнат|комнаты)',
-            r'(?:одно|двух|трех|четырех|пяти)(?:комнатн|комнатной|комнатную)',
-            r'(?:студи[юя]|однушк[ау])'
+            r'(?:одно|двух|тр[её]х|четыр[её]х|пяти)(?:комнатн|комнатной|комнатную)',
+            r'(однушк[ау]|двушк[ау]|тр[её]шк[ау]|четыр[её]хкомнатн[ау])',
+            r'(студия|студию|студийка)'
         ]
 
         self.intent_patterns = {
@@ -45,9 +46,9 @@ class HousingCriteriaExtractor:
             ]
         }
 
-        self.context = {}
-
-    def extract_criteria(self, text: str) -> dict:
+    def extract_criteria(self, text: str, context: dict | None = None) -> dict:
+        if context is None:
+            context = {}
         try:
             doc = self._process_text(text)
             spans = self._get_normalized_spans(doc)
@@ -57,17 +58,25 @@ class HousingCriteriaExtractor:
                 'location': self._extract_location(spans, text),
                 'price': self._extract_price(text),
                 'area': self._extract_area(text),
-                'deal': self._extract_deal_type(text)
+                'deal': self._extract_deal_type(text) if self._has_deal_intent(text) else None
             }
 
             for key, value in result.items():
                 if value is not None:
-                    self.context[key] = value
+                    context[key] = value
 
-            return self.context.copy()
+            return context.copy()
         except Exception as e:
             logging.error(f"Ошибка при извлечении критериев: {e}")
-            return self.context.copy()
+            return context.copy()
+
+    def _has_deal_intent(self, text: str) -> bool:
+        text = text.lower()
+        for patterns in self.intent_patterns.values():
+            for pattern in patterns:
+                if re.search(pattern, text):
+                    return True
+        return False
 
     def _process_text(self, text: str) -> Doc:
         doc = Doc(text)
@@ -110,24 +119,25 @@ class HousingCriteriaExtractor:
     def _extract_rooms(self, text: str) -> int | str:
         text_lower = text.lower()
 
-        if any(word in text_lower for word in ['однушку', 'однушка']):
-            return 1
+        word_to_num = {
+            'одно': 1, 'однушка': 1, 'однушку': 1,
+            'двух': 2, 'двушка': 2, 'двушку': 2,
+            'трех': 3, 'трёшка': 3, 'трёшку': 3,
+            'четырех': 4, 'четырёхкомнатную': 4,
+            'пяти': 5,
+            'студия': 'st', 'студию': 'st', 'студийка': 'st'
+        }
 
-        if any(word in text_lower for word in ['студию', 'студия']):
-            return "st"
+        for word, value in word_to_num.items():
+            if word in text_lower:
+                return value
 
         for pattern in self.rooms_patterns:
             match = re.search(pattern, text_lower)
             if match:
-                if match.group(1):
+                if match.group(1).isdigit():
                     return int(match.group(1))
-                else:
-                    text_num = match.group(0)
-                    if 'одно' in text_num: return 1
-                    if 'двух' in text_num: return 2
-                    if 'трех' in text_num: return 3
-                    if 'четырех' in text_num: return 4
-                    if 'пяти' in text_num: return 5
+
         return None
 
     def _extract_location(self, spans: list, text: str) -> str:
@@ -151,11 +161,11 @@ class HousingCriteriaExtractor:
 
     def _extract_price(self, text: str) -> int:
         text_lower = text.lower()
-
         for pattern in self.price_patterns:
             match = re.search(pattern, text_lower)
             if match:
-                amount = float(match.group(1))
+                digits = match.group(1).replace(" ", "")
+                amount = float(digits)
                 if 'млн' in match.group(0) or 'миллион' in match.group(0):
                     return int(amount * 1_000_000)
                 elif 'тыс' in match.group(0) or 'тысяч' in match.group(0):
@@ -169,7 +179,7 @@ class HousingCriteriaExtractor:
         return None
 
     def _extract_area(self, text: str) -> int:
-        match = re.search(r'(\d+)\s*(?:м²|кв\.?м\.|м\.|квадратных|метр|квадратов)', text, re.IGNORECASE)
+        match = re.search(r'(?:до\s*)?(\d+)\s*(?:м²|кв\.?м\.|м\.|квадратных|метр|квадратов)', text, re.IGNORECASE)
         return int(match.group(1)) if match else None
 
     def _extract_deal_type(self, text: str) -> str:
@@ -178,4 +188,4 @@ class HousingCriteriaExtractor:
             for pattern in patterns:
                 if re.search(pattern, text):
                     return deal_type
-        return 'sale'
+        return None

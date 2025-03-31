@@ -30,7 +30,7 @@ def find_flats(rooms, price, area, location, deal):
         "address": guid,
         "offset": 0,
         "limit": 5,
-        "sort": "published",
+        "sort": "qi",
         "sort_dir": "desc",
         "deal_type": deal,
         "category": "living",
