@@ -10,7 +10,6 @@ export class App {
         this.initToolbox()
         this.initRoutes()
         this.initDesign()
-        await this.initComps()
         const router = store.st.router
         router.navigate("/editor")
     }
@@ -47,10 +46,6 @@ export class App {
 
         router.add("/", () => import("../pages/RootPage"))
 
-        router.add("/feed", () => import("../pages/FeedPage"))
-
-        router.add("/editor", () => import("../pages/EditorPage"))
-        
         router.add("/*", () => import("../pages/NotFoundPage"))
     }
 
@@ -151,64 +146,6 @@ export class App {
         rootPack.config.priority = 0
         
         shader.savePack(rootPack)
-    }
-
-    async initComps() {
-        await this.init_sidebar()
-    }
-    
-    async init_sidebar() {
-        const sortBoxes = (boxes: Record<string, any>, template: Array<string>): Record<string, any> => {
-            return Object.fromEntries(
-                Object.entries(boxes)
-                    .sort(([keyA], [keyB]) => {
-                        let indexA = template.indexOf(keyA)
-                        let indexB = template.indexOf(keyB)
-                        
-                        if (indexA === -1) indexA = template.length
-                        if (indexB === -1) indexB = template.length
-                        
-                        return indexA - indexB
-                    })
-            )
-        }
-        
-        const { Sidebar } = await import('../comps/sidebar/sidebar')
-        const pathes = import.meta.glob("/src/comps/sidebar/comps/*.ts", { eager: true }) as Record<string, any>
-
-        let comps: Record<string, any> = {}
-
-        for (const path in pathes) {
-            const match = path.match(/\/comps\/([^/]+)\.ts$/)
-            if (!match) continue
-
-            const [,pluginName] = match
-
-            const plugin = pathes[path].default
-            if (!plugin) continue
-
-            comps[pluginName] = plugin
-        }
-
-        const template = [
-            "header",
-            "navigation",
-            "body",
-            "footer",
-        ]
-
-        comps = sortBoxes(comps, template)
-
-        const sidebar = new Sidebar()
-
-        sidebar.init({
-            comps: comps,
-            holder: "aside",
-        })
-
-        store.setState({
-            sidebar: sidebar,
-        })
     }
     
     createIcon(id: string):SVGSVGElement {

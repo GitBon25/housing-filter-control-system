@@ -12,7 +12,7 @@
     "nodemon": "^3.1.9",
     "ts-node": "^10.9.2",
     "typescript": "~5.7.2",
-    "vite": "^6.2.3"
+    "vite": "^6.2.4"
   },
   "dependencies": {
     "cors": "^2.8.5",

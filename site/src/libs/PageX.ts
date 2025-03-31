@@ -1,4 +1,4 @@
-import EventEmmiter from "./EventEmmiter"
+import { EventEmmiter } from "./EventEmmiter"
 
 export class Store extends EventEmmiter {
     state: Record<any, any>
