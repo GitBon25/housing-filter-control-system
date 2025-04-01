@@ -26,7 +26,7 @@ export default class {
     }
     
     init() {
-        const main = document.querySelector("main")
+        const main = document.querySelector("main") as HTMLElement
         const chatBox = document.createElement("div")
         this.chatBox = chatBox
         chatBox.classList.add("chat-box")
@@ -45,12 +45,22 @@ export default class {
                 }
             },
         })
+
+        this.chat.initData({
+            input: {
+                message: {
+                    text: {
+                        text: "Найди мне квартиру в москве за 60000 рублей "
+                    }
+                }
+            }
+        })
     }
     
     exit() {
         this.chat.emit("destroy")
         this.chatBox.remove()
         const main = document.querySelector("main")
-        if (main) main.innerHtml = ""
+        if (main) main.innerHTML = ""
     }
 }

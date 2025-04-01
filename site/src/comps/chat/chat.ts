@@ -1,44 +1,137 @@
-import { EventEmmiter } from "../../libs/EventEmmiter"
+import { AppEvent, EventEmmiter } from "../../libs/EventEmmiter"
 import { Theme } from "../../libs/Shader"
 
 class Text {
-    ui: Theme = new Theme("ChatEstate")
-    api: Chat
+    ui: Theme
+    api: ChatEstate
     config: Record<string, any>
     
-    constructor(api: Record<string, any>, config: Record<string, any>) {
+    constructor(api: ChatEstate, config: Record<string, any>) {
+        this.api = api
         this.config = { ...{
-            
+            placeholder: "Хочу вартиру в москве бесплатно"
         }, ...config }
+        this.ui = api.ui
+        this.initUI()
+    }
+
+    initUI() {
+        const ui = this.ui
+
+        ui.add(".chest-text-box", {
+            width: "100%",
+            height: "auto",
+            padding: "3px",
+            display: "flex",
+            alignItems: "center",
+        })
+
+        ui.add(".chest-text", {
+            all: "unset",
+            width: '100%',
+            display: "block",
+            wordWrap: "break-word",
+            whiteSpace: "pre-wrap",
+            fontSize: "110%",
+        })
+        ui.add(".chest-placeholder:empty:not([data-chest-has-content])::before", {
+            content: "attr(data-chest-placeholder)",
+            pointerEvents: "none",
+            color: "rgb(var(--placeholder))",
+        })
+
+        this.api.cont.addEventListener("input", (e) => {
+            const inp = e.target as HTMLElement
+            if ((inp.innerHTML === "<br>" || inp.innerHTML === '\n') && inp.hasAttribute("data-chest-trimInp")) {
+                inp.innerHTML = ""
+            }
+
+            if (inp.classList.contains("chest-placeholder")) {
+                if (inp.innerText === "") {
+                    inp.removeAttribute("data-chest-has-content")
+                } else {
+                    inp.setAttribute("data-chest-has-content", "")
+                }
+            }
+        })
     }
     
-    render(data) {
-        
-    }
-    
-    write(data) {
+    render(data: Record<string, any>) {
+        data = { ...{
+            text: ""
+        }, ...data }
         const inpBox = document.createElement("div")
-        inpBox.classList.add("chest")
+        inpBox.classList.add("chest-text-box")
+
+        const cont = document.createElement("div")
+        cont.classList.add("chest-text")
+        cont.textContent = data.text
+        inpBox.appendChild(cont)
+
+        return inpBox
     }
     
-    send(input) {
-        
+    write(data: Record<string, any>) {
+        data = { ...{
+            text: ""
+        }, ...data}
+
+        const inpBox = document.createElement("div")
+        inpBox.classList.add("chest-text-box")
+
+        const inp = document.createElement("div")
+        inp.setAttribute("contenteditable", "true")
+        inp.setAttribute('data-chest-placeholder', this.config.placeholder)
+        inp.setAttribute("data-chest-trimInp", "")
+        inp.classList.add("chest-text", "chest-placeholder")
+        inp.textContent = data.text
+        inpBox.appendChild(inp)
+
+        return inpBox
     }
     
-    save(message) {
-        
+    send(input: HTMLElement) {
+        const inp = input.querySelector(".chest-text")
+        return {
+            text: inp?.textContent || ""
+        }
+    }
+    
+    save(message: HTMLElement) {
+        const inp = message.querySelector(".chest-text")
+        return {
+            text: inp?.textContent || ""
+        }
     }
 }
 
 class Send {
-    ui: Theme = new Theme("ChatEstate")
-    api: Chat
+    api: ChatEstate
     config: Record<string, any>
     
-    constructor(api: Record<string, any>, config: Record<string, any>) {
+    constructor(api: ChatEstate, config: Record<string, any>) {
         this.config = { ...{
-            icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12,24A12,12,0,1,0,0,12,12.013,12.013,0,0,0,12,24ZM6.293,9.465,9.879,5.879h0a3,3,0,0,1,4.243,0l3.585,3.586.024.025a1,1,0,1,1-1.438,1.389L13,7.586,13.007,18a1,1,0,0,1-2,0L11,7.587,7.707,10.879A1,1,0,1,1,6.293,9.465Z"/></svg>'
+            icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12,24A12,12,0,1,0,0,12,12.013,12.013,0,0,0,12,24ZM6.293,9.465,9.879,5.879h0a3,3,0,0,1,4.243,0l3.585,3.586.024.025a1,1,0,1,1-1.438,1.389L13,7.586,13.007,18a1,1,0,0,1-2,0L11,7.587,7.707,10.879A1,1,0,1,1,6.293,9.465Z"/></svg>',
+            type: "ctrl"
         }, ...config }
+        this.api = api
+        
+        this.init()
+    }
+
+    init() {
+        this.api.cont.addEventListener("keydown", (e) => {
+            if (e.shiftKey || e.ctrlKey) return
+            if (e.code === "Enter") {
+                this.api.send()
+            }
+        })
+    }
+
+    attachBtn(btn: HTMLElement) {
+        btn.addEventListener("click", () => {
+            this.api.send()
+        })
     }
 }
 
@@ -148,7 +241,6 @@ export default class ChatEstate extends EventEmmiter {
         ui.add(".chest-input", {
             width: "90%",
             height: "90%",
-            border: "1px solid red",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -180,16 +272,21 @@ export default class ChatEstate extends EventEmmiter {
             display: "flex",
             flexDirection: "row",
             alignItems: "center",
-            padding: "5px",
-            border: "1px solid yellow",
         })
         
         ui.add(".chest-input-menu-btnsBox", {
-            
+            width: "100%",
+            display: "flex",
+            alignItems: 'center',
+            flexDirection: "row",
         })
         
         ui.add(".chest-input-menu-ctrlBox", {
-            
+            width: "100%",
+            display: "flex",
+            alignItems: 'center',
+            flexDirection: "row",
+            justifyContent: "flex-end"
         })
         
         
@@ -229,7 +326,13 @@ export default class ChatEstate extends EventEmmiter {
             flexDirection: "row",
             padding: "3px",
             gap: "8px",
+            cursor: "pointer",
             border: "rgb(var(--border))",
+            transition: "transform 0.3s",
+
+            "&:active": {
+                transform: "scale(1.1)"
+            },
             
             "&-icon": {
                 display: "flex",
@@ -239,8 +342,8 @@ export default class ChatEstate extends EventEmmiter {
                 height: "auto",
                 
                 "svg": {
-                    width: "20px",
-                    height: "20px",
+                    width: "25px",
+                    height: "25px",
                     fill: "rgb(var(--color))",
                     aspectRatio: "1/1",
                 }
@@ -264,13 +367,13 @@ export default class ChatEstate extends EventEmmiter {
             
             let fragment = document.createDocumentFragment();
             
-            elements.sort((a, b) => parseInt(a.getAttribute("data-chest-id")) - parseInt(b.getAttribute("data-chest-id")))
+            elements.sort((a, b) => parseInt(a.getAttribute("data-chest-id") as string) - parseInt(b.getAttribute("data-chest-id") as string))
             
             elements.forEach(element => {
               fragment.appendChild(element)
             })
             
-            container.appendChild(fragment)
+            this.content.appendChild(fragment)
         })
         
         this.on("destroy", () => {
@@ -278,7 +381,7 @@ export default class ChatEstate extends EventEmmiter {
             this.ui.delete()
         })
         
-        this.on("send", (e) => {
+        this.on("send", (e: AppEvent) => {
             // ищешь кнопку отправки и если она забоокирована - вызыааешь prevent()
         })
     }
@@ -319,7 +422,7 @@ export default class ChatEstate extends EventEmmiter {
         this.initMenu(menu)
     }
     
-    initMenu(menu) {
+    initMenu(menu: HTMLElement) {
         const ctrl = []
         const btns = []
         
@@ -334,7 +437,7 @@ export default class ChatEstate extends EventEmmiter {
             const iconBox = document.createElement("div")
             iconBox.classList.add("chest-input-menu-btn-icon")
             if (icon) {
-                iconBox.innerHtml = icon
+                iconBox.innerHTML = icon
                 btn.appendChild(iconBox)
             }
             
@@ -343,7 +446,7 @@ export default class ChatEstate extends EventEmmiter {
             const span = document.createElement("div")
             nameBox.appendChild(span)
             if (name) {
-                span.innerHtml = name
+                span.innerHTML = name
                 btn.appendChild(nameBox)
             }
             
@@ -351,6 +454,10 @@ export default class ChatEstate extends EventEmmiter {
                 ctrl.push(btn)
             } else {
                 btns.push(btn)
+            }
+
+            if (typeof tool.attachBtn === "function") {
+                tool.attachBtn(btn)
             }
         }
         
@@ -367,7 +474,8 @@ export default class ChatEstate extends EventEmmiter {
     
     initData(data: Record<string, any>) {
         if (data.input) {
-            const toolData = data.input.messages
+            const toolData = data.input.message
+            const inpContent = this.input.querySelector(".chest-input-message")
             for (const toolName in toolData) {
                 const tool = this.tools[toolName]
                 if (!tool) return
@@ -376,8 +484,7 @@ export default class ChatEstate extends EventEmmiter {
                 const rend = tool.write(toolData[toolName])
                 if (!(rend instanceof HTMLElement)) return
                 
-                const inpContent = this.input.querySelector(".chest-input-content")
-                inpContent.appendChild(rend)
+                inpContent?.appendChild(rend)
             }
         }
         if (data.messages) {
@@ -391,7 +498,7 @@ export default class ChatEstate extends EventEmmiter {
         let { data, side, id } = msData
         
         if (id === undefined) {
-            let lastMs = this.content.lastElelemntChild
+            let lastMs = this.content.lastElementChild
             if (lastMs) {
                 id = Number(lastMs.getAttribute("data-chest-id") || "0") + 1
             } else {
@@ -431,14 +538,14 @@ export default class ChatEstate extends EventEmmiter {
         this.emit("change", { type: "newMessage" })
     }
     
-    inputData() {
+    inputData(): Record<string, any> {
         const data = {
             data: {},
             side: "right"
         }
         
-        const content = this.input.querySelector(".chest-message-content")
-        content.children.forEach((box) => {
+        const content = this.input.querySelector(".chest-message-content") as HTMLElement
+        Array.from(content.children).forEach((box) => {
             const toolName = box.getAttribute("data-chest-tool")
             if (!toolName) return 
             const tool = this.tools[toolName]
@@ -450,14 +557,14 @@ export default class ChatEstate extends EventEmmiter {
             data.data[toolName] = data
         })
         
-        this.message(data)
+        return data
     }
     
     clearInput() {
         this.emit("clearInput")
         
         let content = this.input.querySelector(".chest-message-content")
-        if (content) content.innerHtml = ""
+        if (content) content.innerHTML = ""
     }
     
     send(data = this.inputData()) {
@@ -468,20 +575,20 @@ export default class ChatEstate extends EventEmmiter {
     }
     
     save() {
-        let data = {
+        let data: Record<string, any> = {
             input: this.inputData(),
             messages: [],
         }
         
-        this.content.children.forEach((box) => {
-            let msData = {
+        Array.from(this.content.children).forEach((box) => {
+            let msData: Record<string, any> = {
                 id: Number(box.getAttribute("data-chest-id") as string),
                 side: box.getAttribute("data-chest-direction") || "right",
-                data: {}
+                data: {},
             }
             
-            const content = this.box.querySelector(".chest-message-content")
-            content.children.forEach((toolBox) => {
+            const content = box.querySelector(".chest-message-content") as HTMLElement
+            Array.from(content.children).forEach((toolBox) => {
                 const toolName = toolBox.getAttribute("data-chest-tool")
                 if (!toolName) return
                 const tool = this.tools[toolName]
