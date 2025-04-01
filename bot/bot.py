@@ -9,15 +9,19 @@ from telegram.ext import (
 )
 from config import TELEGRAM_TOKEN
 from nlp_processor import HousingCriteriaExtractor
-import logging, sys, os
+import logging
+import sys
+import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from services.url import find_flats
+
 
 # Настройка логирования
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
+
 
 class HousingBot:
     def __init__(self):
@@ -53,7 +57,8 @@ class HousingBot:
 
         try:
             prev_context = self.user_contexts.get(user_id, {})
-            new_context = self.nlp_processor.extract_criteria(user_input, prev_context)
+            new_context = self.nlp_processor.extract_criteria(
+                user_input, prev_context)
             self.user_contexts[user_id] = new_context
 
             if new_context.get("location") and not all([
@@ -63,20 +68,25 @@ class HousingBot:
             ]):
                 summary_parts = []
                 if new_context.get("location"):
-                    summary_parts.append(f"Город: {new_context['location']}")
+                    summary_parts.append(
+                        f"Город: {(new_context['location']).capitalize()}")
                 if new_context.get("rooms"):
-                    summary_parts.append(f"Комнат: {new_context['rooms'] if new_context['rooms'] != 0 else 'Студия'}")
+                    summary_parts.append(
+                        f"Комнат: {new_context['rooms'] if new_context['rooms'] != 0 else 'Студия'}")
                 if new_context.get("price"):
-                    summary_parts.append(f"Бюджет до: {new_context['price']:,} ₽")
+                    summary_parts.append(
+                        f"Бюджет до: {new_context['price']:,} ₽")
                 if new_context.get("area"):
-                    summary_parts.append(f"Площадь до: {new_context['area']} м²")
+                    summary_parts.append(
+                        f"Площадь до: {new_context['area']} м²")
                 if new_context.get("deal"):
                     summary_parts.append(
                         f"Тип: {'Аренда' if new_context['deal'] == 'rent' else 'Покупка'}"
                     )
 
                 if summary_parts:
-                    summary_text = "📋 Текущие критерии поиска:\n" + "\n".join(summary_parts)
+                    summary_text = "📋 Текущие критерии поиска:\n" + \
+                        "\n".join(summary_parts)
                     await update.message.reply_text(summary_text)
 
                 keyboard = [
@@ -109,6 +119,7 @@ class HousingBot:
         if query.data == "search_now":
             criteria = self.user_contexts.get(user_id, {})
             await self._send_flats(query, criteria)
+            self.user_contexts[user_id] = {}
 
     async def _send_flats(self, target, criteria: dict):
         summary_parts = []
@@ -126,7 +137,8 @@ class HousingBot:
             )
 
         if summary_parts:
-            summary_text = "📋 Текущие критерии поиска:\n" + "\n".join(summary_parts)
+            summary_text = "📋 Текущие критерии поиска:\n" + \
+                "\n".join(summary_parts)
             await target.message.reply_text(summary_text)
 
         location = criteria.get("location")
@@ -140,21 +152,36 @@ class HousingBot:
         deal = criteria.get("deal") or "sale"
 
         flats = find_flats(rooms, price, area, location, deal=deal)
+        valid_flats = [f for f in flats if isinstance(f, dict)]
 
-        if isinstance(flats, list) and flats and isinstance(flats[0], dict):
-            for flat in flats:
-                photo = flat["photo_url"]
-                caption = flat["caption"]
-                safe_caption = caption[:1020] + "…" if len(caption) > 1024 else caption
-                if photo:
-                    await target.message.reply_photo(photo=photo, caption=safe_caption)
-                else:
-                    await target.message.reply_text(safe_caption)
-        else:
-            for msg in flats:
-                await target.message.reply_text(msg)
-        
-        user_id = target.message.from_user.id if hasattr(target, "message") else target.from_user.id
+        # Отправка квартир
+        for flat in valid_flats:
+            photo = flat["photo_url"]
+            caption = flat["caption"]
+            safe_caption = caption[:1020] + \
+                "…" if len(caption) > 1024 else caption
+            if photo:
+                await target.message.reply_photo(photo=photo, caption=safe_caption)
+            else:
+                await target.message.reply_text(safe_caption)
+
+        # Отправка карты после квартир
+        coords = []
+        for i, flat in enumerate(valid_flats):
+            lat = flat.get("lat")
+            lon = flat.get("lon")
+            if lat and lon:
+                coords.append(f"{lon},{lat},pm2rdl{i+1}")
+
+        if coords:
+            points = "~".join(coords)
+            map_url = f"https://static-maps.yandex.ru/1.x/?l=map&pt={points}"
+            caption = f"🗺 Карта с {len(coords)} квартир{'ой' if len(coords) == 1 else 'ами'}"
+            await target.message.reply_photo(photo=map_url, caption=caption)
+
+        # Сброс контекста пользователя
+        user_id = target.message.from_user.id if hasattr(
+            target, "message") else target.from_user.id
         self.user_contexts[user_id] = {}
 
 
@@ -166,7 +193,8 @@ def main():
     app.add_handler(CommandHandler("reset", bot.reset))
     app.add_handler(CommandHandler("help", bot.help))
     app.add_handler(CallbackQueryHandler(bot.handle_callback))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_message))
+    app.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND, bot.handle_message))
 
     logging.info("----------------------- Бот запущен -----------------------")
     app.run_polling()

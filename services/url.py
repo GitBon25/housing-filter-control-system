@@ -2,7 +2,6 @@ import requests
 import logging
 
 
-
 def find_flats(rooms, price, area, location, deal):
     url1 = "https://geo-service.domclick.ru/research/api/v1/autocomplete/regions"
     params = {"name": location}
@@ -19,7 +18,7 @@ def find_flats(rooms, price, area, location, deal):
         if item.get("name").lower() == location.lower():
             guid = item.get("guid")
             break
-    
+
     url2 = "https://bff-search-web.domclick.ru/api/offers/v1"
     if deal == 'rent':
         price_key = "rent_price__lte"
@@ -91,9 +90,14 @@ def find_flats(rooms, price, area, location, deal):
             f"🔗 {path}"
         )
 
+        lon = item.get("location", {}).get("lon")
+        lat = item.get("location", {}).get("lat")
+
         results.append({
             "photo_url": photo_full,
-            "caption": caption
+            "caption": caption,
+            "lon": lon,
+            "lat": lat
         })
 
     return results
