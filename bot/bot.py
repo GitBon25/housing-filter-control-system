@@ -22,7 +22,7 @@ logging.basicConfig(
 class HousingBot:
     def __init__(self):
         self.nlp_processor = HousingCriteriaExtractor()
-        self.user_contexts = {}  # user_id -> context dict
+        self.user_contexts = {}
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         welcome_text = (
@@ -32,6 +32,15 @@ class HousingBot:
             "\nМожно отправлять частями: сначала город, потом цену и т.д."
         )
         await update.message.reply_text("\n".join(welcome_text))
+
+    async def help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        help_text = (
+            "ℹ️ Команды бота:",
+            "/start - Начать работу с ботом",
+            "/reset - Сбросить введённые критерии",
+            "/help - Что умеет бот"
+        )
+        await update.message.reply_text("\n".join(help_text))
 
     async def reset(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.message.from_user.id
@@ -155,6 +164,7 @@ def main():
 
     app.add_handler(CommandHandler("start", bot.start))
     app.add_handler(CommandHandler("reset", bot.reset))
+    app.add_handler(CommandHandler("help", bot.help))
     app.add_handler(CallbackQueryHandler(bot.handle_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_message))
 
