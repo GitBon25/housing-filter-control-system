@@ -11,7 +11,7 @@ export class App {
         this.initRoutes()
         this.initDesign()
         const router = store.st.router
-        router.navigate("/editor")
+        router.navigate("/chat")
     }
 
     initApi() {
@@ -45,6 +45,8 @@ export class App {
         })
 
         router.add("/", () => import("../pages/RootPage"))
+        
+        router.add("/chat", () => import("../pages/ChatPage"))
 
         router.add("/*", () => import("../pages/NotFoundPage"))
     }
