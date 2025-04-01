@@ -222,8 +222,18 @@ class HousingBot:
         if coords:
             points = "~".join(coords)
             map_url = f"https://static-maps.yandex.ru/1.x/?l=map&pt={points}"
-            caption = f"🗺 Карта с {len(coords)} квартир{'ой' if len(coords) == 1 else 'ами'}"
-            await target.message.reply_photo(photo=map_url, caption=caption)
+            caption = (
+                f"🗺 Карта с {len(coords)} квартир{'ой' if len(coords) == 1 else 'ами'}\n"
+                "Какая квартира вам подходит?"
+            )
+            keyboard = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(f"{i+1}", callback_data=f"flat_{i}")
+                    for i in range(len(coords))
+                ]
+            ])
+
+            await target.message.reply_photo(photo=map_url, caption=caption, reply_markup=keyboard)
 
         # Сброс контекста пользователя
         user_id = target.message.from_user.id if hasattr(
