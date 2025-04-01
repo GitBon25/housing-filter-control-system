@@ -100,7 +100,8 @@ class HousingCriteriaExtractor:
     def _normalize_city_name(self, city: str) -> str:
         try:
             if '-' in city:
-                parts = [self.morph.parse(part)[0].normal_form for part in city.split('-')]
+                parts = [self.morph.parse(
+                    part)[0].normal_form for part in city.split('-')]
                 normalized = '-'.join(parts)
             else:
                 parsed = self.morph.parse(city)[0]
@@ -179,7 +180,8 @@ class HousingCriteriaExtractor:
         return None
 
     def _extract_area(self, text: str) -> int:
-        match = re.search(r'(?:до\s*)?(\d+)\s*(?:м²|кв\.?м\.|м\.|квадратных|метр|квадратов)', text, re.IGNORECASE)
+        match = re.search(
+            r'(?:до\s*)?(\d+)\s*(?:м²|кв\.?м\.|м\.|квадратных|метр|квадратов)', text, re.IGNORECASE)
         return int(match.group(1)) if match else None
 
     def _extract_deal_type(self, text: str) -> str:
