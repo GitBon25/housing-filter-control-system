@@ -1,8 +1,8 @@
 import asyncio
-import logging, sys, os
-from services.taskQueue import get_last_task, update_task
-from ..bot.nlp_processor import HousingCriteriaExtractor
-from ..services.url import find_flats
+import logging
+from server.services.taskQueue import get_last_task, update_task
+from bot.nlp_processor import HousingCriteriaExtractor
+from services.url import find_flats
 
 nlp_processor = HousingCriteriaExtractor()
 
@@ -48,4 +48,4 @@ async def main():
         await worker()
         await asyncio.sleep(3)
 
-asyncio.run(main())
+

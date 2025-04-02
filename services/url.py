@@ -1,6 +1,6 @@
 import requests
 import logging
-
+from server.services.db import add_model
 
 def find_flats(rooms, price, area, location, deal):
     url1 = "https://geo-service.domclick.ru/research/api/v1/autocomplete/regions"

@@ -12,6 +12,7 @@ export async function req(url: string | URL, options: RequestInit | Record<strin
     }
 
     try {
+        console.log(op)
         const res = await fetch(url, op)
         
         if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`)

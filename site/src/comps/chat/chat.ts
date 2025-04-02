@@ -86,21 +86,23 @@ class Text {
         inp.classList.add("chest-text", "chest-placeholder")
         inp.textContent = data.text
         inpBox.appendChild(inp)
-
+        setTimeout(() => inp.focus())
         return inpBox
     }
     
     send(input: HTMLElement) {
         const inp = input.querySelector(".chest-text")
+        if (!inp || !inp.textContent) return false
         return {
-            text: inp?.textContent || ""
+            text: inp?.textContent.trim() || ""
         }
     }
     
     save(message: HTMLElement) {
         const inp = message.querySelector(".chest-text")
+        if (!inp || !inp.textContent) return false
         return {
-            text: inp?.textContent || ""
+            text: inp?.textContent.trim() || ""
         }
     }
 }
@@ -175,8 +177,12 @@ export default class ChatEstate extends EventEmmiter {
     }
     
     init() {
+        this.initDesign()
+        this.initCore()
+        this.initContent()
         this.initTools()
-        this.initChat()
+        this.initInput()
+        this.emit("ready")
     }
     
     initTools() {
@@ -193,24 +199,16 @@ export default class ChatEstate extends EventEmmiter {
             this.tools[key] = plugin
         }
     }
-    
-    initChat() {
-        this.initDesign()
-        this.initCore()
-        this.initContent()
-        this.initInput()
-    }
-    
+
     initDesign() {
         const ui = this.ui
         console.log(ui)
         ui.add(".chest", {
             width: "100%",
-            height: "auto",
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
-            border: "1px solid white",
+            height: "80%",
         })
         
         ui.add(".chest-content-box", {
@@ -218,8 +216,9 @@ export default class ChatEstate extends EventEmmiter {
             display: "flex",
             alignItems: "center",
             flexDirection: "column",
-            height: "auto",
             padding: "5px",
+            height: "100%",
+            overflowY: 'auto',
         })
         
         ui.add(".chest-content", {
@@ -232,14 +231,14 @@ export default class ChatEstate extends EventEmmiter {
         ui.add(".chest-input-box", {
             width: "100%",
             height: "auto",
-            padding: "5px",
+            padding: "10px",
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
         })
         
         ui.add(".chest-input", {
-            width: "90%",
+            width: "70%",
             height: "90%",
             display: "flex",
             alignItems: "center",
@@ -265,6 +264,8 @@ export default class ChatEstate extends EventEmmiter {
             gap: "5px",
             alignItems: "center",
             height: "auto",
+            maxHeight: "200px",
+            overflowY: "auto",
         })
         
         ui.add(".chest-input-menu", {
@@ -317,6 +318,10 @@ export default class ChatEstate extends EventEmmiter {
             height: "auto",
             gap: "5px",
         })
+
+        ui.add(".chest-message-toolBox", {
+            width: "100%",
+        })
         
         
         ui.add(".chest-input-menu-btn", {
@@ -357,6 +362,18 @@ export default class ChatEstate extends EventEmmiter {
                 height: "auto",
             },
         })
+
+        ui.add('.chest-content [data-chest-direction="left"]', {
+            justifyContent: "flex-start"
+        })
+
+        ui.add('.chest-content [data-chest-direction="right"]', {
+            justifyContent: "flex-end"
+        })
+
+        ui.add('.chest-content [data-chest-direction="center"]', {
+            justifyContent: "center"
+        })
     }
     
     initCore() {
@@ -393,6 +410,8 @@ export default class ChatEstate extends EventEmmiter {
         
         const content = document.createElement("div") 
         content.classList.add("chest-content")
+        box.appendChild(content)
+        this.content = content
         
         this.cont.appendChild(box)
     }
@@ -412,7 +431,7 @@ export default class ChatEstate extends EventEmmiter {
         input.appendChild(content)
         
         const messageInp = document.createElement("div")
-        messageInp.classList.add("chest-input-message")
+        messageInp.classList.add("chest-input-message", "no-scroll")
         content.appendChild(messageInp)
         
         const menu = document.createElement("div")
@@ -473,23 +492,30 @@ export default class ChatEstate extends EventEmmiter {
     }
     
     initData(data: Record<string, any>) {
+        this.emit("initData", { data: data })
         if (data.input) {
             const toolData = data.input.message
             const inpContent = this.input.querySelector(".chest-input-message")
             for (const toolName in toolData) {
+                const toolBox = document.createElement("div")
+                toolBox.classList.add("chest-message-toolBox")
+                
                 const tool = this.tools[toolName]
                 if (!tool) return
-                
                 if (typeof tool.write !== "function") return
+
                 const rend = tool.write(toolData[toolName])
-                if (!(rend instanceof HTMLElement)) return
                 
-                inpContent?.appendChild(rend)
+                if (!(rend instanceof HTMLElement)) continue
+                
+                toolBox.appendChild(rend)
+                toolBox.setAttribute("data-chest-tool", toolName)
+                inpContent?.appendChild(toolBox)
             }
         }
         if (data.messages) {
             for (const message of data.messages) {
-                this.message(data)
+                this.message(message)
             }
         }
     }
@@ -513,9 +539,11 @@ export default class ChatEstate extends EventEmmiter {
         
         const message = document.createElement("div")
         message.classList.add("chest-message")
+        box.appendChild(message)
         
         const content = document.createElement("div")
         content.classList.add("chest-message-content")
+        message.appendChild(content)
         
         for (const toolName in data) {
             const tool = this.tools[toolName]
@@ -525,26 +553,32 @@ export default class ChatEstate extends EventEmmiter {
             toolBox.classList.add("chest-message-toolBox")
             
             if (typeof tool.render !== "function") continue
+
             const rend = tool.render(msData, toolBox)
+            console.log(rend)
             if (!(rend instanceof HTMLElement)) continue
             
             toolBox.appendChild(rend)
             toolBox.setAttribute("data-chest-tool", toolName)
             content.appendChild(toolBox)
         }
+
+        if (!content.children.length) return
     
+        let e = this.emit("newMessage", { message: box, id: id, side: side, data: data})
+        if (e.prevented) return
         this.content.appendChild(box)
-        this.emit("newMessage", { message: box, id: id, side: side, data: data})
+        box.scrollIntoView({ behavior: 'smooth' })
         this.emit("change", { type: "newMessage" })
     }
     
     inputData(): Record<string, any> {
-        const data = {
+        const inpData = {
             data: {},
             side: "right"
         }
         
-        const content = this.input.querySelector(".chest-message-content") as HTMLElement
+        const content = this.input.querySelector(".chest-input-message") as HTMLElement
         Array.from(content.children).forEach((box) => {
             const toolName = box.getAttribute("data-chest-tool")
             if (!toolName) return 
@@ -554,17 +588,26 @@ export default class ChatEstate extends EventEmmiter {
             let data = tool.send(box)
             if (!data) return
             
-            data.data[toolName] = data
+            inpData.data[toolName] = data
         })
         
-        return data
+        return inpData
     }
     
     clearInput() {
         this.emit("clearInput")
         
-        let content = this.input.querySelector(".chest-message-content")
+        let content = this.input.querySelector(".chest-input-message")
         if (content) content.innerHTML = ""
+        this.initData({
+            input: {
+                message: {
+                    text: {
+                        text: ""
+                    }
+                }
+            }
+        })
     }
     
     send(data = this.inputData()) {

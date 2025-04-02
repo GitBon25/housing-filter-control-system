@@ -22,7 +22,7 @@ export class App {
         }
         
         // ЗАМЕНИ ЭТО НА ПРОДАКШЕНЕ
-        req.config.conf.origin = location.protocol + location.hostname + ":" + 5000 + "/"
+        req.config.conf.origin = 'http://127.0.0.1:8000'
 
         store.setState({
             req: req
