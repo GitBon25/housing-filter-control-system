@@ -1,4 +1,5 @@
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, BotCommand
+from services.url import find_flats
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -12,8 +13,9 @@ from nlp_processor import HousingCriteriaExtractor
 import logging
 import sys
 import os
+
+# Корректное добавление пути к модулям
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from services.url import find_flats
 
 
 # Настройка логирования
@@ -21,241 +23,296 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
+logger = logging.getLogger(__name__)
 
 
 class HousingBot:
-    sale_text = (
-            "📋 <b>Чек-лист покупателя квартиры</b>\n\n"
-            "🔹 <b>До просмотра:</b>\n"
-            "• Проверить квартиру онлайн, сравнить с похожими\n"
-            "• Уточнить владельца, тип собственности, торг\n\n"
-            "🔹 <b>На просмотре:</b>\n"
-            "• Осмотреть подъезд, дом, двор\n"
-            "• Внутри — техника, мебель, возможные дефекты\n"
-            "• Узнать причину продажи\n\n"
-            "🔹 <b>Документы:</b>\n"
-            "• Выписка из ЕГРН, паспорт продавца\n"
-            "• Основание права собственности (ДКП, дарение...)\n"
-            "• Согласие супруга, доверенности, если нужно\n\n"
-            "🔹 <b>На сделке:</b>\n"
-            "• Договор с суммой, акт, условия оплаты и передачи\n"
-            "• Лучше через ячейку, аккредитив или эскроу\n\n"
-            "🔹 <b>После сделки:</b>\n"
-            "• Выписка из ЕГРН с вами как собственником\n"
-            "• Переоформление ЖКХ, счётчики"
-        )
-    rent_text = (
-            "📋 <b>Чек-лист арендатора квартиры</b>\n\n"
-            "🔹 <b>При звонке:</b>\n"
-            "• Уточните актуальность и адрес\n"
-            "• Цена, кто платит коммуналку\n"
-            "• Есть ли залог, можно ли с детьми/животными\n"
-            "• Когда можно посмотреть квартиру\n\n"
-            "🔹 <b>При осмотре:</b>\n"
-            "• Подъезд: запах, мусор, состояние\n"
-            "• Краны, техника, мебель, потолок — всё ли в порядке\n\n"
-            "🔹 <b>Документы:</b>\n"
-            "• Паспорт владельца, выписка из ЕГРН\n"
-            "• Доверенности, если несколько собственников\n"
-            "• У риелтора — доверенность от владельца\n\n"
-            "🔹 <b>Безопасность:</b>\n"
-            "• Деньги — только после подписания договора и акта\n"
-            "• Зафиксируйте показания счётчиков\n"
-            "• Проверьте долги за ЖКУ, квартиру на сайте ФССП"
-        )
+    SALE_TEXT = (
+        "📋 <b>Чек-лист покупателя квартиры</b>\n\n"
+        "🔹 <b>До просмотра:</b>\n"
+        "• Проверить квартиру онлайн, сравнить с похожими\n"
+        "• Уточнить владельца, тип собственности, торг\n\n"
+        "🔹 <b>На просмотре:</b>\n"
+        "• Осмотреть подъезд, дом, двор\n"
+        "• Внутри — техника, мебель, возможные дефекты\n"
+        "• Узнать причину продажи\n\n"
+        "🔹 <b>Документы:</b>\n"
+        "• Выписка из ЕГРН, паспорт продавца\n"
+        "• Основание права собственности (ДКП, дарение...)\n"
+        "• Согласие супруга, доверенности, если нужно\n\n"
+        "🔹 <b>На сделке:</b>\n"
+        "• Договор с суммой, акт, условия оплаты и передачи\n"
+        "• Лучше через ячейку, аккредитив или эскроу\n\n"
+        "🔹 <b>После сделки:</b>\n"
+        "• Выписка из ЕГРН с вами как собственником\n"
+        "• Переоформление ЖКХ, счётчики"
+    )
+
+    RENT_TEXT = (
+        "📋 <b>Чек-лист арендатора квартиры</b>\n\n"
+        "🔹 <b>При звонке:</b>\n"
+        "• Уточните актуальность и адрес\n"
+        "• Цена, кто платит коммуналку\n"
+        "• Есть ли залог, можно ли с детьми/животными\n"
+        "• Когда можно посмотреть квартиру\n\n"
+        "🔹 <b>При осмотре:</b>\n"
+        "• Подъезд: запах, мусор, состояние\n"
+        "• Краны, техника, мебель, потолок — всё ли в порядке\n\n"
+        "🔹 <b>Документы:</b>\n"
+        "• Паспорт владельца, выписка из ЕГРН\n"
+        "• Доверенности, если несколько собственников\n"
+        "• У риелтора — доверенность от владельца\n\n"
+        "🔹 <b>Безопасность:</b>\n"
+        "• Деньги — только после подписания договора и акта\n"
+        "• Зафиксируйте показания счётчиков\n"
+        "• Проверьте долги за ЖКУ, квартиру на сайте ФССП"
+    )
+
     def __init__(self):
         self.nlp_processor = HousingCriteriaExtractor()
         self.user_contexts = {}
 
-    async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         welcome_text = (
-            "🏠 Добро пожаловать в бота для поиска жилья!",
-            "\n\nПросто напишите ваши критерии, например:\n",
-            "• 'Ищу 2-комнатную квартиру в Москве до 10 млн рублей площадью 60 м²'",
-            "\nМожно отправлять частями: сначала город, потом цену и т.д."
+            "🏠 Добро пожаловать в бота для поиска жилья!\n\n"
+            "Просто напишите ваши критерии, например:\n"
+            "• 'Ищу 2-комнатную квартиру в Москве до 10 млн рублей площадью 60 м²'\n"
+            "Можно отправлять частями: сначала город, потом цену и т.д."
         )
-        await update.message.reply_text("\n".join(welcome_text))
+        await update.message.reply_text(welcome_text)
 
-    async def help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def help(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         help_text = (
-            "ℹ️ Команды бота:",
-            "/start - Начать работу с ботом",
-            "/reset - Сбросить введённые критерии",
-            "/help - Что умеет бот"
+            "ℹ️ Команды бота:\n"
+            "/start - Начать работу с ботом\n"
+            "/reset - Сбросить введённые критерии\n"
+            "/help - Что умеет бот\n"
+            "/sale - Чек-лист покупателя\n"
+            "/rent - Чек-лист арендатора\n"
+            "/lastresults - Показать последние результаты"
         )
-        await update.message.reply_text("\n".join(help_text))
+        await update.message.reply_text(help_text)
 
-    async def reset(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def reset(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         user_id = update.message.from_user.id
         self.user_contexts[user_id] = {}
         await update.message.reply_text("🔄 Контекст очищен. Вы можете начать с начала.")
 
-    async def sale(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_text(self.sale_text, parse_mode="HTML")
-    
-    async def rent(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_text(self.rent_text, parse_mode="HTML")
+    async def sale(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        await update.message.reply_text(self.SALE_TEXT, parse_mode="HTML")
 
+    async def rent(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        await update.message.reply_text(self.RENT_TEXT, parse_mode="HTML")
 
-    async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def last_results(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         user_id = update.message.from_user.id
-        user_input = update.message.text
+        user_context = self.user_contexts.get(user_id, {})
+        flats = user_context.get("flats", [])
+
+        logger.info(
+            f"Last results requested by user {user_id}. Context: {user_context}")
+
+        if not flats:
+            await update.message.reply_text("❌ Нет сохранённых результатов.")
+            return
+
+        for flat in flats:
+            caption = flat.get("caption", "Нет описания")
+            safe_caption = caption[:1020] + \
+                "…" if len(caption) > 1024 else caption
+            try:
+                if flat.get("photo_url"):
+                    await update.message.reply_photo(photo=flat["photo_url"], caption=safe_caption)
+                else:
+                    await update.message.reply_text(safe_caption)
+            except Exception as e:
+                logger.error(f"Ошибка при отправке результата: {e}")
+                await update.message.reply_text("⚠️ Ошибка при отображении результата.")
+
+    async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        user_id = update.message.from_user.id
+        user_input = update.message.text.strip()
 
         try:
             prev_context = self.user_contexts.get(user_id, {})
             new_context = self.nlp_processor.extract_criteria(
                 user_input, prev_context)
+            new_context["flats"] = prev_context.get("flats", [])
             self.user_contexts[user_id] = new_context
+
+            logger.info(f"Updated context for user {user_id}: {new_context}")
 
             if new_context.get("location") and not all([
                 new_context.get("rooms"),
                 new_context.get("price"),
                 new_context.get("area")
             ]):
-                summary_parts = []
-                if new_context.get("location"):
-                    summary_parts.append(
-                        f"Город: {(new_context['location']).capitalize()}")
-                if new_context.get("rooms"):
-                    summary_parts.append(
-                        f"Комнат: {new_context['rooms'] if new_context['rooms'] != 0 else 'Студия'}")
-                if new_context.get("price"):
-                    summary_parts.append(
-                        f"Бюджет до: {new_context['price']:,} ₽")
-                if new_context.get("area"):
-                    summary_parts.append(
-                        f"Площадь до: {new_context['area']} м²")
-                if new_context.get("deal"):
-                    summary_parts.append(
-                        f"Тип: {'Аренда' if new_context['deal'] == 'rent' else 'Покупка'}"
+                summary = self._build_criteria_summary(new_context)
+                if summary:
+                    await update.message.reply_text(summary)
+                    keyboard = [[InlineKeyboardButton(
+                        "🔍 Найти с текущими параметрами", callback_data="search_now")]]
+                    await update.message.reply_text(
+                        "Устраивают ли вас текущие параметры или хотите добавить что-то ещё?",
+                        reply_markup=InlineKeyboardMarkup(keyboard)
                     )
-
-                if summary_parts:
-                    summary_text = "📋 Текущие критерии поиска:\n" + \
-                        "\n".join(summary_parts)
-                    await update.message.reply_text(summary_text)
-
-                keyboard = [
-                    [
-                        InlineKeyboardButton(
-                            "🔍 Найти с текущими параметрами",
-                            callback_data="search_now"
-                        )
-                    ]
-                ]
-                await update.message.reply_text(
-                    "Устраивают ли вас текущие параметры или хотите добавить что-то ещё?",
-                    reply_markup=InlineKeyboardMarkup(keyboard)
-                )
                 return
 
             await self._send_flats(update, new_context)
 
         except Exception as e:
-            logging.error(f"Ошибка обработки сообщения: {e}")
-            await update.message.reply_text(
-                "⚠️ Произошла ошибка при обработке запроса. Попробуйте сформулировать иначе."
-            )
+            logger.error(
+                f"Ошибка обработки сообщения от {user_id}: {e}", exc_info=True)
+            await update.message.reply_text("⚠️ Ошибка при обработке запроса. Попробуйте ещё раз.")
 
-    async def handle_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        query = update.callback_query
-        await query.answer()
-        user_id = query.from_user.id
-
-        if query.data == "search_now":
-            criteria = self.user_contexts.get(user_id, {})
-            await self._send_flats(query, criteria)
-            self.user_contexts[user_id] = {}
-
-    async def _send_flats(self, target, criteria: dict):
-        summary_parts = []
+    def _build_criteria_summary(self, criteria: dict) -> str:
+        parts = []
         if criteria.get("location"):
-            summary_parts.append(f"Город: {criteria['location']}")
+            parts.append(f"Город: {criteria['location'].capitalize()}")
         if criteria.get("rooms"):
-            summary_parts.append(f"Комнат: {criteria['rooms']}")
+            parts.append(
+                f"Комнат: {criteria['rooms'] if criteria['rooms'] != 0 else 'Студия'}")
         if criteria.get("price"):
-            summary_parts.append(f"Бюджет до: {criteria['price']:,} ₽")
+            parts.append(f"Бюджет до: {criteria['price']:,} ₽")
         if criteria.get("area"):
-            summary_parts.append(f"Площадь до: {criteria['area']} м²")
+            parts.append(f"Площадь до: {criteria['area']} м²")
         if criteria.get("deal"):
-            summary_parts.append(
-                f"Тип: {'Аренда' if criteria['deal'] == 'rent' else 'Покупка'}"
-            )
+            parts.append(
+                f"Тип: {'Аренда' if criteria['deal'] == 'rent' else 'Покупка'}")
+        return "📋 Текущие критерии поиска:\n" + "\n".join(parts) if parts else ""
 
-        if summary_parts:
-            summary_text = "📋 Текущие критерии поиска:\n" + \
-                "\n".join(summary_parts)
-            await target.message.reply_text(summary_text)
+    async def _send_flats(self, target, criteria: dict) -> None:
+        # Корректное определение user_id
+        if isinstance(target, Update):  # Обычное сообщение
+            user_id = target.message.from_user.id
+            reply_method = target.message.reply_text
+        else:  # CallbackQuery
+            user_id = target.from_user.id
+            reply_method = target.message.reply_text
 
-        location = criteria.get("location")
-        if not location:
-            await target.message.reply_text("⚠️ Пожалуйста, укажите хотя бы город.")
+        # Получаем текущий контекст и обновляем его
+        current_context = self.user_contexts.get(user_id, {}).copy()
+        current_context.update(criteria)
+
+        logger.info(f"Sending flats for user {user_id}. Criteria: {criteria}")
+
+        if not criteria.get("location"):
+            await reply_method("⚠️ Пожалуйста, укажите хотя бы город.")
             return
 
-        rooms = criteria.get("rooms")
-        price = criteria.get("price")
-        area = criteria.get("area")
-        deal = criteria.get("deal") or "sale"
+        try:
+            flats = find_flats(
+                criteria.get("rooms"),
+                criteria.get("price"),
+                criteria.get("area"),
+                criteria["location"],
+                deal=criteria.get("deal", "sale")
+            )
+            valid_flats = [f for f in flats if isinstance(f, dict)]
 
-        flats = find_flats(rooms, price, area, location, deal=deal)
-        valid_flats = [f for f in flats if isinstance(f, dict)]
+            # Сохраняем квартиры в контекст перед отправкой
+            current_context["flats"] = valid_flats
+            self.user_contexts[user_id] = current_context
+            logger.info(
+                f"Context updated with flats for user {user_id}: {self.user_contexts[user_id]}")
 
-        # Отправка квартир
-        for flat in valid_flats:
-            photo = flat["photo_url"]
-            caption = flat["caption"]
-            safe_caption = caption[:1020] + \
-                "…" if len(caption) > 1024 else caption
-            if photo:
-                await target.message.reply_photo(photo=photo, caption=safe_caption)
-            else:
-                await target.message.reply_text(safe_caption)
+            if not valid_flats:
+                await reply_method("🔍 По вашим критериям ничего не найдено.")
+                return
 
-        # Отправка карты после квартир
-        coords = []
-        for i, flat in enumerate(valid_flats):
-            lat = flat.get("lat")
-            lon = flat.get("lon")
-            if lat and lon:
-                coords.append(f"{lon},{lat},pm2rdl{i+1}")
+            for flat in valid_flats:
+                caption = flat.get("caption", "Нет описания")
+                safe_caption = caption[:1020] + \
+                    "…" if len(caption) > 1024 else caption
+                try:
+                    if flat.get("photo_url"):
+                        await target.message.reply_photo(photo=flat["photo_url"], caption=safe_caption)
+                    else:
+                        await target.message.reply_text(safe_caption)
+                except Exception as e:
+                    logger.error(f"Ошибка отправки квартиры: {e}")
 
+            await self._send_map(target, valid_flats)
+            await self._send_flat_selection_keyboard(target, valid_flats)
+
+        except Exception as e:
+            logger.error(
+                f"Ошибка в _send_flats для user {user_id}: {e}", exc_info=True)
+            await reply_method("⚠️ Ошибка при поиске квартир.")
+
+    async def _send_map(self, target, flats: list) -> None:
+        coords = [f"{flat['lon']},{flat['lat']},pm2rdl{i+1}"
+                  for i, flat in enumerate(flats)
+                  if flat.get("lat") and flat.get("lon")]
         if coords:
             points = "~".join(coords)
             map_url = f"https://static-maps.yandex.ru/1.x/?l=map&pt={points}"
-            caption = (
-                f"🗺 Карта с {len(coords)} квартир{'ой' if len(coords) == 1 else 'ами'}\n"
-                "Какая квартира вам подходит?"
-            )
-            keyboard = InlineKeyboardMarkup([
-                [
-                    InlineKeyboardButton(f"{i+1}", callback_data=f"flat_{i}")
-                    for i in range(len(coords))
-                ]
-            ])
+            caption = f"🗺 Карта с {len(coords)} квартир{'ой' if len(coords) == 1 else 'ами'}"
+            try:
+                await target.message.reply_photo(photo=map_url, caption=caption)
+            except Exception as e:
+                logger.error(f"Ошибка отправки карты: {e}")
 
-            await target.message.reply_photo(photo=map_url, caption=caption, reply_markup=keyboard)
+    async def _send_flat_selection_keyboard(self, target, flats: list) -> None:
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton(f"{i+1}", callback_data=f"flat_{i}")
+            for i in range(len(flats))
+        ]])
+        await target.message.reply_text("Выберите номер квартиры для подробностей:", reply_markup=keyboard)
 
-        # Сброс контекста пользователя
-        user_id = target.message.from_user.id if hasattr(
-            target, "message") else target.from_user.id
-        self.user_contexts[user_id] = {}
+    async def handle_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        query = update.callback_query
+        await query.answer()
+        user_id = query.from_user.id
+        user_context = self.user_contexts.get(user_id, {})
+
+        logger.info(
+            f"Callback received for user {user_id}. Context: {user_context}")
+
+        try:
+            if query.data == "search_now":
+                await self._send_flats(query, user_context)
+            elif query.data.startswith("flat_"):
+                idx = int(query.data.split("_")[1])
+                flats = user_context.get("flats", [])
+                if 0 <= idx < len(flats):
+                    flat = flats[idx]
+                    details = flat.get("details") or flat.get(
+                        "caption", "Информация недоступна")
+                    await query.message.reply_text(f"🏠 Подробности:\n{details}")
+                else:
+                    await query.message.reply_text("⚠️ Квартира не найдена.")
+        except Exception as e:
+            logger.error(
+                f"Ошибка в callback для {user_id}: {e}", exc_info=True)
+            await query.message.reply_text("⚠️ Ошибка при обработке запроса.")
 
 
-def main():
-    bot = HousingBot()
-    app = Application.builder().token(TELEGRAM_TOKEN).build()
+def main() -> None:
+    try:
+        bot = HousingBot()
+        app = Application.builder().token(TELEGRAM_TOKEN).build()
 
-    app.add_handler(CommandHandler("start", bot.start))
-    app.add_handler(CommandHandler("reset", bot.reset))
-    app.add_handler(CommandHandler("help", bot.help))
-    app.add_handler(CommandHandler("sale", bot.sale))
-    app.add_handler(CommandHandler("rent", bot.rent))
-    app.add_handler(CallbackQueryHandler(bot.handle_callback))
-    app.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND, bot.handle_message))
+        handlers = [
+            CommandHandler("start", bot.start),
+            CommandHandler("reset", bot.reset),
+            CommandHandler("help", bot.help),
+            CommandHandler("sale", bot.sale),
+            CommandHandler("rent", bot.rent),
+            CommandHandler("lastresults", bot.last_results),
+            CallbackQueryHandler(bot.handle_callback),
+            MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_message)
+        ]
 
-    logging.info("----------------------- Бот запущен -----------------------")
-    app.run_polling()
+        for handler in handlers:
+            app.add_handler(handler)
+
+        logger.info(
+            "----------------------- Бот запущен -----------------------")
+        app.run_polling()
+    except Exception as e:
+        logger.critical(
+            f"Критическая ошибка при запуске бота: {e}", exc_info=True)
 
 
 if __name__ == "__main__":
