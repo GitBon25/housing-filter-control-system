@@ -1,4 +1,3 @@
-from services.url import find_flats
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
     Application,
@@ -13,10 +12,12 @@ from nlp_processor import HousingCriteriaExtractor
 import logging
 import sys
 import os
+import aiohttp  # Для асинхронных HTTP-запросов к Yandex API
 
 # Корректное добавление пути к модулям
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+from services.url import find_flats
 
 # Настройка логирования
 logging.basicConfig(
@@ -24,7 +25,6 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
-
 
 class HousingBot:
     SALE_TEXT = (
@@ -68,16 +68,18 @@ class HousingBot:
         "• Проверьте долги за ЖКУ, квартиру на сайте ФССП"
     )
 
+    DEAL = ""
+
     def __init__(self):
         self.nlp_processor = HousingCriteriaExtractor()
         self.user_contexts = {}
+        self.yandex_api_key = "cb7b3954-781a-4f71-bcd7-57248fcb586b"
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         welcome_text = (
             "🏠 Добро пожаловать в бота для поиска жилья!\n\n"
             "Просто напишите ваши критерии, например:\n"
-            "• 'Ищу 2-комнатную квартиру в Москве до 10 млн рублей площадью 60 м²'\n"
-            "Можно отправлять частями: сначала город, потом цену и т.д."
+            "• 'Ищу 2-комнатную квартиру в Москве до 10 млн рублей площадью 60 м²'"
         )
         await update.message.reply_text(welcome_text)
 
@@ -109,8 +111,7 @@ class HousingBot:
         user_context = self.user_contexts.get(user_id, {})
         flats = user_context.get("flats", [])
 
-        logger.info(
-            f"Last results requested by user {user_id}. Context: {user_context}")
+        logger.info(f"Last results requested by user {user_id}. Context: {user_context}")
 
         if not flats:
             await update.message.reply_text("❌ Нет сохранённых результатов.")
@@ -118,8 +119,7 @@ class HousingBot:
 
         for flat in flats:
             caption = flat.get("caption", "Нет описания")
-            safe_caption = caption[:1020] + \
-                "…" if len(caption) > 1024 else caption
+            safe_caption = caption[:1020] + "…" if len(caption) > 1024 else caption
             try:
                 if flat.get("photo_url"):
                     await update.message.reply_photo(photo=flat["photo_url"], caption=safe_caption)
@@ -135,8 +135,7 @@ class HousingBot:
 
         try:
             prev_context = self.user_contexts.get(user_id, {})
-            new_context = self.nlp_processor.extract_criteria(
-                user_input, prev_context)
+            new_context = self.nlp_processor.extract_criteria(user_input, prev_context)
             new_context["flats"] = prev_context.get("flats", [])
             self.user_contexts[user_id] = new_context
 
@@ -161,8 +160,7 @@ class HousingBot:
             await self._send_flats(update, new_context)
 
         except Exception as e:
-            logger.error(
-                f"Ошибка обработки сообщения от {user_id}: {e}", exc_info=True)
+            logger.error(f"Ошибка обработки сообщения от {user_id}: {e}", exc_info=True)
             await update.message.reply_text("⚠️ Ошибка при обработке запроса. Попробуйте ещё раз.")
 
     def _build_criteria_summary(self, criteria: dict) -> str:
@@ -170,16 +168,45 @@ class HousingBot:
         if criteria.get("location"):
             parts.append(f"Город: {criteria['location'].capitalize()}")
         if criteria.get("rooms"):
-            parts.append(
-                f"Комнат: {criteria['rooms'] if criteria['rooms'] != 0 else 'Студия'}")
+            parts.append(f"Комнат: {criteria['rooms'] if criteria['rooms'] != 0 else 'Студия'}")
         if criteria.get("price"):
             parts.append(f"Бюджет до: {criteria['price']:,} ₽")
         if criteria.get("area"):
             parts.append(f"Площадь до: {criteria['area']} м²")
         if criteria.get("deal"):
-            parts.append(
-                f"Тип: {'Аренда' if criteria['deal'] == 'rent' else 'Покупка'}")
+            self.DEAL = criteria['deal']
+            parts.append(f"Тип: {'Аренда' if criteria['deal'] == 'rent' else 'Покупка'}")
         return "📋 Текущие критерии поиска:\n" + "\n".join(parts) if parts else ""
+
+    async def _get_nearby_infrastructure(self, lon: float, lat: float) -> str:
+        categories = ["магазин", "больница", "школа"]
+        nearby = []
+        
+        for category in categories:
+            url = (
+                f"https://search-maps.yandex.ru/v1/?text={category}&ll={lon},{lat}"
+                f"&spn=0.01,0.01&lang=ru_RU&apikey={self.yandex_api_key}"
+            )
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            features = data.get("features", [])
+                            if features:
+                                # Берем ближайший объект для каждой категории
+                                feature = features[0]
+                                name = feature["properties"].get("name", "Без названия")
+                                desc = feature["properties"].get("description", "")
+                                nearby.append(f"• {category.capitalize()}: {name} ({desc})")
+                        else:
+                            logger.error(f"Yandex API вернул ошибку для {category}: {response.status}")
+            except Exception as e:
+                logger.error(f"Ошибка запроса к Yandex API для {category}: {e}")
+
+        if not nearby:
+            return "🏬 Ближайшая инфраструктура: ничего не найдено."
+        return "🏬 Ближайшая инфраструктура:\n" + "\n".join(nearby)
 
     async def _send_flats(self, target, criteria: dict) -> None:
         # Корректное определение user_id
@@ -193,7 +220,7 @@ class HousingBot:
         # Получаем текущий контекст и обновляем его
         current_context = self.user_contexts.get(user_id, {}).copy()
         current_context.update(criteria)
-
+        
         logger.info(f"Sending flats for user {user_id}. Criteria: {criteria}")
 
         if not criteria.get("location"):
@@ -209,12 +236,11 @@ class HousingBot:
                 deal=criteria.get("deal", "sale")
             )
             valid_flats = [f for f in flats if isinstance(f, dict)]
-
+            
             # Сохраняем квартиры в контекст перед отправкой
             current_context["flats"] = valid_flats
             self.user_contexts[user_id] = current_context
-            logger.info(
-                f"Context updated with flats for user {user_id}: {self.user_contexts[user_id]}")
+            logger.info(f"Context updated with flats for user {user_id}: {self.user_contexts[user_id]}")
 
             if not valid_flats:
                 await reply_method("🔍 По вашим критериям ничего не найдено.")
@@ -222,8 +248,7 @@ class HousingBot:
 
             for flat in valid_flats:
                 caption = flat.get("caption", "Нет описания")
-                safe_caption = caption[:1020] + \
-                    "…" if len(caption) > 1024 else caption
+                safe_caption = caption[:1020] + "…" if len(caption) > 1024 else caption
                 try:
                     if flat.get("photo_url"):
                         await target.message.reply_photo(photo=flat["photo_url"], caption=safe_caption)
@@ -236,14 +261,13 @@ class HousingBot:
             await self._send_flat_selection_keyboard(target, valid_flats)
 
         except Exception as e:
-            logger.error(
-                f"Ошибка в _send_flats для user {user_id}: {e}", exc_info=True)
+            logger.error(f"Ошибка в _send_flats для user {user_id}: {e}", exc_info=True)
             await reply_method("⚠️ Ошибка при поиске квартир.")
 
     async def _send_map(self, target, flats: list) -> None:
-        coords = [f"{flat['lon']},{flat['lat']},pm2rdl{i+1}"
-                  for i, flat in enumerate(flats)
-                  if flat.get("lat") and flat.get("lon")]
+        coords = [f"{flat['lon']},{flat['lat']},pm2rdl{i+1}" 
+                 for i, flat in enumerate(flats) 
+                 if flat.get("lat") and flat.get("lon")]
         if coords:
             points = "~".join(coords)
             map_url = f"https://static-maps.yandex.ru/1.x/?l=map&pt={points}"
@@ -266,8 +290,7 @@ class HousingBot:
         user_id = query.from_user.id
         user_context = self.user_contexts.get(user_id, {})
 
-        logger.info(
-            f"Callback received for user {user_id}. Context: {user_context}")
+        logger.info(f"Callback received for user {user_id}. Context: {user_context}")
 
         try:
             if query.data == "search_now":
@@ -277,16 +300,15 @@ class HousingBot:
                 flats = user_context.get("flats", [])
                 if 0 <= idx < len(flats):
                     flat = flats[idx]
-                    details = flat.get("details") or flat.get(
-                        "caption", "Информация недоступна")
-                    await query.message.reply_text(f"🏠 Подробности:\n{details}")
+                    details = flat.get("details") or flat.get("caption", "Информация недоступна")
+                    infra = await self._get_nearby_infrastructure(flat["lon"], flat["lat"])
+                    full_details = f"{details}\n\n{infra}\n\n{self.RENT_TEXT if self.DEAL == 'rent' else self.SALE_TEXT}"
+                    await query.message.reply_text(f"Подробности:\n{full_details}", parse_mode="HTML")
                 else:
                     await query.message.reply_text("⚠️ Квартира не найдена.")
         except Exception as e:
-            logger.error(
-                f"Ошибка в callback для {user_id}: {e}", exc_info=True)
+            logger.error(f"Ошибка в callback для {user_id}: {e}", exc_info=True)
             await query.message.reply_text("⚠️ Ошибка при обработке запроса.")
-
 
 def main() -> None:
     try:
@@ -307,13 +329,10 @@ def main() -> None:
         for handler in handlers:
             app.add_handler(handler)
 
-        logger.info(
-            "----------------------- Бот запущен -----------------------")
+        logger.info("----------------------- Бот запущен -----------------------")
         app.run_polling()
     except Exception as e:
-        logger.critical(
-            f"Критическая ошибка при запуске бота: {e}", exc_info=True)
-
+        logger.critical(f"Критическая ошибка при запуске бота: {e}", exc_info=True)
 
 if __name__ == "__main__":
     main()
