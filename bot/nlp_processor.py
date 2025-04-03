@@ -25,9 +25,9 @@ class HousingCriteriaExtractor:
         }
 
         self.price_patterns = [
-            r'(?:до|за|не больше|не выше)\s*([\d\s]+)[\s]*(?:млн|миллион|тыс|тысяч)',
-            r'цена\s*[:]??\s*([\d\s]+)[\s]*(?:млн|миллион|тыс|тысяч)',
-            r'([\d\s]+)[\s]*(?:млн|миллион|тыс|тысяч)[\s]*(?:руб|р)?'
+            r'(?:до|за|не больше|не выше)\s*([\d\s.,]+)[\s]*(?:млн|миллион|тыс|тысяч|руб|р)',
+            r'цена\s*[:]?[\s]*([\d\s.,]+)[\s]*(?:млн|миллион|тыс|тысяч|руб|р)',
+            r'([\d\s.,]+)[\s]*(?:млн|миллион|тыс|тысяч|руб|р)'
         ]
 
         self.rooms_patterns = [
@@ -37,12 +37,17 @@ class HousingCriteriaExtractor:
             r'(студия|студию|студийка)'
         ]
 
+        self.area_patterns = [
+            r'(?:до|не больше)\s*(\d+)[\s]*(?:м²|кв\.?м\.?|м\.?|квадратных?|метр|квадратов?)',
+            r'(\d+)[\s]*(?:м²|кв\.?м\.?|м\.?|квадратных?|метр|квадратов?)'
+        ]
+
         self.intent_patterns = {
             'rent': [
                 r'снять', r'аренд[ауовать]*', r'аренду', r'сда[её]тся', r'в аренду'
             ],
             'sale': [
-                r'купить', r'покупк[ау]', r'продаж[ауы]', r'прода[её]тся'
+                r'купить', r'покупк[ау]', r'продаж[ауы]', r'прода[её]тся', r'нужна'
             ]
         }
 
@@ -58,7 +63,7 @@ class HousingCriteriaExtractor:
                 'location': self._extract_location(spans, text),
                 'price': self._extract_price(text),
                 'area': self._extract_area(text),
-                'deal': self._extract_deal_type(text) if self._has_deal_intent(text) else None
+                'deal': self._extract_deal_type(text) if self._has_deal_intent(text) else context.get('deal', 'sale')
             }
 
             for key, value in result.items():
@@ -100,8 +105,7 @@ class HousingCriteriaExtractor:
     def _normalize_city_name(self, city: str) -> str:
         try:
             if '-' in city:
-                parts = [self.morph.parse(
-                    part)[0].normal_form for part in city.split('-')]
+                parts = [self.morph.parse(part)[0].normal_form for part in city.split('-')]
                 normalized = '-'.join(parts)
             else:
                 parsed = self.morph.parse(city)[0]
@@ -112,12 +116,12 @@ class HousingCriteriaExtractor:
                 if alias == normalized_lower or full_name.lower() == normalized_lower:
                     return full_name
 
-            return normalized
+            return normalized.capitalize()  # Возвращаем с заглавной буквы
         except Exception:
             logging.warning(f"Ошибка нормализации города: {city}")
             return city
 
-    def _extract_rooms(self, text: str) -> int | str:
+    def _extract_rooms(self, text: str) -> int | str | None:
         text_lower = text.lower()
 
         word_to_num = {
@@ -141,7 +145,7 @@ class HousingCriteriaExtractor:
 
         return None
 
-    def _extract_location(self, spans: list, text: str) -> str:
+    def _extract_location(self, spans: list, text: str) -> str | None:
         for span in spans:
             if span['type'] == 'LOC':
                 return span['normal']
@@ -157,32 +161,37 @@ class HousingCriteriaExtractor:
             return 'Санкт-Петербург'
         if 'новосибирск' in text_lower:
             return 'Новосибирск'
+        if 'владивосток' in text_lower:
+            return 'Владивосток'
 
         return None
 
-    def _extract_price(self, text: str) -> int:
+    def _extract_price(self, text: str) -> int | None:
         text_lower = text.lower()
         for pattern in self.price_patterns:
             match = re.search(pattern, text_lower)
             if match:
-                digits = match.group(1).replace(" ", "")
-                amount = float(digits)
-                if 'млн' in match.group(0) or 'миллион' in match.group(0):
-                    return int(amount * 1_000_000)
-                elif 'тыс' in match.group(0) or 'тысяч' in match.group(0):
-                    return int(amount * 1_000)
-                return int(amount)
-
-        match = re.search(r'(\d+)\s*(?:руб|р)', text_lower)
-        if match:
-            return int(match.group(1))
-
+                digits = match.group(1).replace(" ", "").replace(".", "").replace(",", "")
+                try:
+                    amount = float(digits)
+                    if 'млн' in match.group(0) or 'миллион' in match.group(0):
+                        return int(amount * 1_000_000)
+                    elif 'тыс' in match.group(0) or 'тысяч' in match.group(0):
+                        return int(amount * 1_000)
+                    elif 'руб' in match.group(0) or 'р' in match.group(0):
+                        return int(amount)
+                    return int(amount)
+                except ValueError:
+                    continue
         return None
 
-    def _extract_area(self, text: str) -> int:
-        match = re.search(
-            r'(?:до\s*)?(\d+)\s*(?:м²|кв\.?м\.|м\.|квадратных|метр|квадратов)', text, re.IGNORECASE)
-        return int(match.group(1)) if match else None
+    def _extract_area(self, text: str) -> int | None:
+        text_lower = text.lower()
+        for pattern in self.area_patterns:
+            match = re.search(pattern, text_lower)
+            if match:
+                return int(match.group(1))
+        return None
 
     def _extract_deal_type(self, text: str) -> str:
         text = text.lower()
@@ -190,4 +199,4 @@ class HousingCriteriaExtractor:
             for pattern in patterns:
                 if re.search(pattern, text):
                     return deal_type
-        return None
+        return 'sale'  # По умолчанию покупка, если не указано
