@@ -37,7 +37,10 @@ def add_model(model, dbsession = session()):
         if dbsession: dbsession.rollback()
     finally:
         if dbsession: dbsession.close()
-    
+
+def toDict(row, cursor):
+    columns = [desc[0] for desc in cursor.description]
+    return dict(zip(columns, row))
     
 def get_aparts(ids: list, table_name = "apartments"):
     translations = {
