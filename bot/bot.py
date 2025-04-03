@@ -15,8 +15,8 @@ import os
 
 # Корректное добавление пути к модулям
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
 from services.url import find_flats
+
 
 # Настройка логирования
 logging.basicConfig(
@@ -24,6 +24,7 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
 
 class HousingBot:
     SALE_TEXT = (
@@ -129,7 +130,8 @@ class HousingBot:
         user_context = self.user_contexts.get(user_id, {})
         flats = user_context.get("flats", [])
 
-        logger.info(f"Last results requested by user {user_id}. Context: {user_context}")
+        logger.info(
+            f"Last results requested by user {user_id}. Context: {user_context}")
 
         if not flats:
             no_results_text = (
@@ -146,7 +148,8 @@ class HousingBot:
 
         for flat in flats:
             caption = flat.get("caption", "Нет описания")
-            safe_caption = caption[:1020] + "…" if len(caption) > 1024 else caption
+            safe_caption = caption[:1020] + \
+                "…" if len(caption) > 1024 else caption
             flat_text = (
                 "=== ОБЪЕКТ НАЙДЕН ===\n\n"
                 f"🏢 Описание объекта (одобрено ЖилПравдой):\n{safe_caption}\n\n"
@@ -179,7 +182,8 @@ class HousingBot:
             # Устанавливаем покупку по умолчанию, если deal не указан ранее
             if "deal" not in prev_context:
                 prev_context["deal"] = "sale"
-            new_context = self.nlp_processor.extract_criteria(user_input, prev_context)
+            new_context = self.nlp_processor.extract_criteria(
+                user_input, prev_context)
             new_context["flats"] = prev_context.get("flats", [])
             self.user_contexts[user_id] = new_context
 
@@ -201,14 +205,16 @@ class HousingBot:
                         "Министерство Благосостояния ожидает вашего решения.\n"
                         "=== ОЖИДАНИЕ ПОДТВЕРЖДЕНИЯ ==="
                     )
-                    keyboard = [[InlineKeyboardButton("🔍 Активировать поиск", callback_data="search_now")]]
+                    keyboard = [[InlineKeyboardButton(
+                        "🔍 Активировать поиск", callback_data="search_now")]]
                     await update.message.reply_text(criteria_text, reply_markup=InlineKeyboardMarkup(keyboard))
                 return
 
             await self._send_flats(update, new_context)
 
         except Exception as e:
-            logger.error(f"Ошибка обработки сообщения от {user_id}: {e}", exc_info=True)
+            logger.error(
+                f"Ошибка обработки сообщения от {user_id}: {e}", exc_info=True)
             error_text = (
                 "=== ОШИБКА ОБНАРУЖЕНА ===\n"
                 "Гражданин.\n\n"
@@ -229,13 +235,15 @@ class HousingBot:
         if criteria.get("location"):
             parts.append(f"Локация: {criteria['location'].capitalize()}")
         if criteria.get("rooms"):
-            parts.append(f"Комнат: {criteria['rooms'] if criteria['rooms'] != 0 else 'Студия'}")
+            parts.append(
+                f"Комнат: {criteria['rooms'] if criteria['rooms'] != 0 else 'Студия'}")
         if criteria.get("price"):
             parts.append(f"Максимальная стоимость: {criteria['price']:,} ₽")
         if criteria.get("area"):
             parts.append(f"Площадь: {criteria['area']} м²")
         if criteria.get("deal"):
-            parts.append(f"Тип: {'Аренда' if criteria['deal'] == 'rent' else 'Покупка'}")
+            parts.append(
+                f"Тип: {'Аренда' if criteria['deal'] == 'rent' else 'Покупка'}")
         return "\n".join(parts) if parts else ""
 
     async def _send_flats(self, target, criteria: dict) -> None:
@@ -252,7 +260,8 @@ class HousingBot:
             current_context["deal"] = "sale"
         current_context.update(criteria)
 
-        logger.info(f"Sending flats for user {user_id}. Criteria: {current_context}")
+        logger.info(
+            f"Sending flats for user {user_id}. Criteria: {current_context}")
 
         if not current_context.get("location"):
             no_location_text = (
@@ -277,14 +286,15 @@ class HousingBot:
                 current_context.get("price"),
                 current_context.get("area"),
                 current_context["location"],
-                deal=current_context.get("deal", "sale")  # Покупка по умолчанию
+                # Покупка по умолчанию
+                deal=current_context.get("deal", "sale")
             )
             valid_flats = [f for f in flats if isinstance(f, dict)]
 
             # Проверка на заглушку "Квартиры не найдены"
-            if (not valid_flats or 
-                (len(valid_flats) == 1 and 
-                 valid_flats[0].get("caption", "") == "🔍 Квартиры не найдены по заданным параметрам." and 
+            if (not valid_flats or
+                (len(valid_flats) == 1 and
+                 valid_flats[0].get("caption", "") == "🔍 Квартиры не найдены по заданным параметрам." and
                  valid_flats[0].get("photo_url", "") == "")):
                 current_context["flats"] = []
                 self.user_contexts[user_id] = current_context
@@ -303,11 +313,13 @@ class HousingBot:
 
             current_context["flats"] = valid_flats
             self.user_contexts[user_id] = current_context
-            logger.info(f"Context updated with flats for user {user_id}: {self.user_contexts[user_id]}")
+            logger.info(
+                f"Context updated with flats for user {user_id}: {self.user_contexts[user_id]}")
 
             for flat in valid_flats:
                 caption = flat.get("caption", "Нет описания")
-                safe_caption = caption[:1020] + "…" if len(caption) > 1024 else caption
+                safe_caption = caption[:1020] + \
+                    "…" if len(caption) > 1024 else caption
                 flat_text = (
                     "=== ОБЪЕКТ НАЙДЕН ===\n\n"
                     f"🏢 Описание объекта (одобрено ЖилПравдой):\n{safe_caption}\n\n"
@@ -327,7 +339,8 @@ class HousingBot:
             await self._send_flat_selection_keyboard(target, valid_flats)
 
         except Exception as e:
-            logger.error(f"Ошибка в _send_flats для user {user_id}: {e}", exc_info=True)
+            logger.error(
+                f"Ошибка в _send_flats для user {user_id}: {e}", exc_info=True)
             error_text = (
                 "=== СИСТЕМНЫЙ СБОЙ ===\n"
                 "Гражданин.\n\n"
@@ -346,7 +359,7 @@ class HousingBot:
         if coords:
             points = "~".join(coords)
             map_url = f"https://static-maps.yandex.ru/1.x/?l=map&pt={points}"
-            caption = f"🗺 Карта с {len(coords)} объектов (утверждено ЖилПравдой)"
+            caption = f"🗺 Карта с {len(coords)} квартир{'ой' if len(coords) == 1 else 'ами'}"
             try:
                 await target.message.reply_photo(photo=map_url, caption=caption)
             except Exception as e:
@@ -373,7 +386,8 @@ class HousingBot:
         user_id = query.from_user.id
         user_context = self.user_contexts.get(user_id, {})
 
-        logger.info(f"Callback received for user {user_id}. Context: {user_context}")
+        logger.info(
+            f"Callback received for user {user_id}. Context: {user_context}")
 
         try:
             if query.data == "search_now":
@@ -383,8 +397,10 @@ class HousingBot:
                 flats = user_context.get("flats", [])
                 if 0 <= idx < len(flats):
                     flat = flats[idx]
-                    details = flat.get("details") or flat.get("caption", "Информация недоступна")
-                    deal_type = user_context.get("deal", "sale")  # Используем deal из контекста, по умолчанию "sale"
+                    details = flat.get("details") or flat.get(
+                        "caption", "Информация недоступна")
+                    # Используем deal из контекста, по умолчанию "sale"
+                    deal_type = user_context.get("deal", "sale")
                     full_details = (
                         "=== ПОВТОРНЫЙ ДОСТУП УТВЕРЖДЁН ===\n\n"
                         "Гражданин.\n"
@@ -410,7 +426,8 @@ class HousingBot:
                     )
                     await query.message.reply_text(not_found_text)
         except Exception as e:
-            logger.error(f"Ошибка в callback для {user_id}: {e}", exc_info=True)
+            logger.error(
+                f"Ошибка в callback для {user_id}: {e}", exc_info=True)
             error_text = (
                 "=== СИСТЕМНЫЙ СБОЙ ===\n"
                 "Гражданин.\n\n"
@@ -421,6 +438,7 @@ class HousingBot:
                 "=== СОЕДИНЕНИЕ ПРЕРВАНО ==="
             )
             await query.message.reply_text(error_text)
+
 
 def main() -> None:
     try:
@@ -441,10 +459,13 @@ def main() -> None:
         for handler in handlers:
             app.add_handler(handler)
 
-        logger.info("----------------------- Бот запущен -----------------------")
+        logger.info(
+            "----------------------- Бот запущен -----------------------")
         app.run_polling()
     except Exception as e:
-        logger.critical(f"Критическая ошибка при запуске бота: {e}", exc_info=True)
+        logger.critical(
+            f"Критическая ошибка при запуске бота: {e}", exc_info=True)
+
 
 if __name__ == "__main__":
     main()
