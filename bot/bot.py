@@ -12,6 +12,9 @@ from nlp_processor import HousingCriteriaExtractor
 import logging
 import sys
 import os
+import requests
+import speech_recognition as sr
+import ffmpeg
 
 # Корректное добавление пути к модулям
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -71,13 +74,16 @@ class HousingBot:
     def __init__(self):
         self.nlp_processor = HousingCriteriaExtractor()
         self.user_contexts = {}
+        self.recognizer = sr.Recognizer()
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         welcome_text = (
             "=== ВХОДЯЩЕЕ СООБЩЕНИЕ ОДОБРЕНО ===\n"
             "Гражданин.\n\n"
             "Ваше подключение к Системе ЖилРаспределения зарегистрировано.\n"
-            "Для активации поиска жилплощади укажите параметры в утверждённом формате.\n\n"
+            "Для активации поиска жилплощади укажите параметры в утверждённом формате:\n"
+            "- Текстовым сообщением\n"
+            "- Голосовым сообщением (будет распознано и отправлено вам для подтверждения)\n\n"
             "Пример корректного запроса:\n"
             "• Требуется: 2-комнатная жилплощадь. Локация: Москва. Максимальная стоимость: 10 000 000 рублей. Площадь: 60 м².\n"
             "• Снять 1-комнатную квартиру. Локация: Владивосток. Цена: 30 000 рублей.\n\n"
@@ -100,6 +106,7 @@ class HousingBot:
             "• /rent — Чек-лист для аренды (утверждён Министерством Благосостояния)\n"
             "• /lastresults — Просмотр последних данных поиска\n\n"
             "По умолчанию поиск настроен на покупку. Укажите 'аренда' или 'снять' для поиска аренды.\n"
+            "Поддерживаются голосовые сообщения.\n"
             "Любое отклонение от директив фиксируется.\n"
             "Министерство Правды наблюдает.\n"
             "=== КОНЕЦ ПЕРЕДАЧИ ==="
@@ -175,11 +182,73 @@ class HousingBot:
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         user_id = update.message.from_user.id
-        user_input = update.message.text.strip()
 
+        # Обработка текстового сообщения
+        if update.message.text:
+            user_input = update.message.text.strip()
+            await self._process_text_input(update, user_id, user_input)
+
+        # Обработка голосового сообщения
+        elif update.message.voice:
+            await update.message.reply_text(
+                "=== ОБРАБОТКА ГОЛОСОВОГО СООБЩЕНИЯ ===\nГражданин.\n\nВаш голосовой запрос принят в обработку."
+            )
+            try:
+                # Получение голосового файла
+                file = await update.message.voice.get_file()
+                file_url = file.file_path
+                audio_data = requests.get(file_url).content
+
+                # Сохраняем временный OGG
+                with open("temp_voice.ogg", "wb") as f:
+                    f.write(audio_data)
+
+                # Конвертация OGG → WAV через ffmpeg-python
+                ffmpeg_path = "C:\\ffmpeg\\bin\\ffmpeg.exe"  # Убедитесь, что путь корректен
+                ffmpeg.input("temp_voice.ogg").output(
+                    "temp_voice.wav").run(cmd=ffmpeg_path, quiet=True)
+
+                # Распознавание WAV
+                with sr.AudioFile("temp_voice.wav") as source:
+                    audio = self.recognizer.record(source)
+                    user_input = self.recognizer.recognize_google(
+                        audio, language="ru-RU")
+
+                logger.info(
+                    f"Voice message from user {user_id} recognized as: {user_input}")
+                await update.message.reply_text(f"Распознанный запрос: {user_input}")
+
+                # Отправка распознанного текста в обработку как обычный текст
+                await self._process_text_input(update, user_id, user_input)
+
+            except sr.UnknownValueError:
+                await update.message.reply_text(
+                    "=== ОШИБКА РАСПОЗНАВАНИЯ ===\n"
+                    "Гражданин.\n\n"
+                    "Ваш голосовой запрос не удалось распознать.\n"
+                    "Повторите попытку.\n"
+                    "=== КОНЕЦ ДИАГНОСТИКИ ==="
+                )
+            except Exception as e:
+                logger.error(
+                    f"Ошибка распознавания голоса для user {user_id}: {e}")
+                await update.message.reply_text(
+                    "=== СИСТЕМНЫЙ СБОЙ ===\n"
+                    "Гражданин.\n\n"
+                    "Обработка голосового запроса прервана.\n"
+                    "Повторите попытку.\n"
+                    "=== СОЕДИНЕНИЕ ПРЕРВАНО ==="
+                )
+            finally:
+                # Удаление временных файлов
+                if os.path.exists("temp_voice.ogg"):
+                    os.remove("temp_voice.ogg")
+                if os.path.exists("temp_voice.wav"):
+                    os.remove("temp_voice.wav")
+
+    async def _process_text_input(self, update: Update, user_id: int, user_input: str) -> None:
         try:
             prev_context = self.user_contexts.get(user_id, {})
-            # Устанавливаем покупку по умолчанию, если deal не указан ранее
             if "deal" not in prev_context:
                 prev_context["deal"] = "sale"
             new_context = self.nlp_processor.extract_criteria(
@@ -255,7 +324,6 @@ class HousingBot:
             reply_method = target.message.reply_text
 
         current_context = self.user_contexts.get(user_id, {}).copy()
-        # Устанавливаем покупку по умолчанию, если deal отсутствует
         if "deal" not in current_context:
             current_context["deal"] = "sale"
         current_context.update(criteria)
@@ -286,12 +354,10 @@ class HousingBot:
                 current_context.get("price"),
                 current_context.get("area"),
                 current_context["location"],
-                # Покупка по умолчанию
                 deal=current_context.get("deal", "sale")
             )
             valid_flats = [f for f in flats if isinstance(f, dict)]
 
-            # Проверка на заглушку "Квартиры не найдены"
             if (not valid_flats or
                 (len(valid_flats) == 1 and
                  valid_flats[0].get("caption", "") == "🔍 Квартиры не найдены по заданным параметрам." and
@@ -366,10 +432,8 @@ class HousingBot:
                 logger.error(f"Ошибка отправки карты: {e}")
 
     async def _send_flat_selection_keyboard(self, target, flats: list) -> None:
-        keyboard = InlineKeyboardMarkup([[
-            InlineKeyboardButton(f"{i+1}", callback_data=f"flat_{i}")
-            for i in range(len(flats))
-        ]])
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(f"{i+1}", callback_data=f"flat_{i}")
+                                        for i in range(len(flats))]])
         selection_text = (
             "=== ВЫБОР УТВЕРЖДЁН ===\n"
             "Гражданин.\n\n"
@@ -399,7 +463,6 @@ class HousingBot:
                     flat = flats[idx]
                     details = flat.get("details") or flat.get(
                         "caption", "Информация недоступна")
-                    # Используем deal из контекста, по умолчанию "sale"
                     deal_type = user_context.get("deal", "sale")
                     full_details = (
                         "=== ПОВТОРНЫЙ ДОСТУП УТВЕРЖДЁН ===\n\n"
@@ -453,7 +516,9 @@ def main() -> None:
             CommandHandler("rent", bot.rent),
             CommandHandler("lastresults", bot.last_results),
             CallbackQueryHandler(bot.handle_callback),
-            MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_message)
+            MessageHandler(filters.TEXT & ~filters.COMMAND,
+                           bot.handle_message),
+            MessageHandler(filters.VOICE, bot.handle_message)
         ]
 
         for handler in handlers:
