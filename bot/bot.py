@@ -82,7 +82,7 @@ class HousingBot:
             "Пример корректного запроса:\n"
             "• Требуется: 2-комнатная жилплощадь. Локация: Москва. Максимальная стоимость: 10 000 000 рублей. Площадь: 60 м².\n\n"
             "Несанкционированные запросы приравниваются к саботажу.\n"
-            "Министерство Благосостояния следит за вашей лояльностью.\n"
+            "Министерство Благосостояния следит за вашей лояльности.\n"
             "=== СООБЩЕНИЕ ЗАВЕРШЕНО ==="
         )
         await update.message.reply_text(welcome_text)
@@ -146,16 +146,8 @@ class HousingBot:
         for flat in flats:
             caption = flat.get("caption", "Нет описания")
             safe_caption = caption[:1020] + "…" if len(caption) > 1024 else caption
-            location = flat.get("location", "Локация не указана")
-            price = flat.get("price", "Неизвестно")
-            area = flat.get("area", "Неизвестно")
-            rooms = flat.get("rooms", "Неизвестно")
-            floor_info = flat.get("floor_info", "Неизвестно")
             flat_text = (
                 "=== ОБЪЕКТ НАЙДЕН ===\n\n"
-                f"📍 Локация:\n{location}\n\n"
-                f"💰 Стоимость:\n{price} рублей (утверждено Министерством Изобилия)\n\n"
-                f"📐 Параметры:\nПлощадь: {area} м²  Комнат: {rooms}\nЭтаж: {floor_info}\n\n"
                 f"🏢 Описание объекта (одобрено ЖилПравдой):\n{safe_caption}\n\n"
                 "⚠️ Предупреждение:\nНесанкционированный доступ к данным вне Системы запрещён.\n\n"
                 "Министерство Благосостояния подтверждает соответствие.\n"
@@ -235,7 +227,7 @@ class HousingBot:
         if criteria.get("rooms"):
             parts.append(f"Комнат: {criteria['rooms'] if criteria['rooms'] != 0 else 'Студия'}")
         if criteria.get("price"):
-            parts.append(f"Максимальная стоимость: {criteria['price']:,} рублей")
+            parts.append(f"Максимальная стоимость: {criteria['price']:,} ₽")
         if criteria.get("area"):
             parts.append(f"Площадь: {criteria['area']} м²")
         if criteria.get("deal"):
@@ -283,11 +275,13 @@ class HousingBot:
             )
             valid_flats = [f for f in flats if isinstance(f, dict)]
 
-            current_context["flats"] = valid_flats
-            self.user_contexts[user_id] = current_context
-            logger.info(f"Context updated with flats for user {user_id}: {self.user_contexts[user_id]}")
-
-            if not valid_flats:
+            # Проверка на заглушку "Квартиры не найдены"
+            if (not valid_flats or 
+                (len(valid_flats) == 1 and 
+                 valid_flats[0].get("caption", "") == "🔍 Квартиры не найдены по заданным параметрам." and 
+                 valid_flats[0].get("photo_url", "") == "")):
+                current_context["flats"] = []
+                self.user_contexts[user_id] = current_context
                 no_flats_text = (
                     "=== ЖИЛПЛОЩАДЬ НЕ ОБНАРУЖЕНА ===\n"
                     "Гражданин.\n\n"
@@ -300,6 +294,10 @@ class HousingBot:
                 )
                 await reply_method(no_flats_text)
                 return
+
+            current_context["flats"] = valid_flats
+            self.user_contexts[user_id] = current_context
+            logger.info(f"Context updated with flats for user {user_id}: {self.user_contexts[user_id]}")
 
             for flat in valid_flats:
                 caption = flat.get("caption", "Нет описания")
