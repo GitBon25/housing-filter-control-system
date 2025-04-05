@@ -203,9 +203,7 @@ class HousingBot:
                     f.write(audio_data)
 
                 # Конвертация OGG → WAV через ffmpeg-python
-                ffmpeg_path = "C:\\ffmpeg\\bin\\ffmpeg.exe"
-                ffmpeg.input("temp_voice.ogg").output(
-                    "temp_voice.wav").run(cmd=ffmpeg_path, quiet=True)
+                ffmpeg.input("temp_voice.ogg").output("temp_voice.wav").run(quiet=True)
 
                 # Распознавание WAV
                 with sr.AudioFile("temp_voice.wav") as source:
