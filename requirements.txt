@@ -1,6 +1,6 @@
 python-telegram-bot==20.6
- natasha==1.6.0
- pymorphy2==0.9.1
- requests==2.31.0
- speechrecognition==3.10.0
- ffmpeg-python==0.2.0
+natasha==1.6.0
+pymorphy2==0.9.1
+requests==2.31.0
+speechrecognition==3.10.0
+ffmpeg-python==0.2.0
