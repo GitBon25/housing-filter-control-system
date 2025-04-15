@@ -1,3 +1,12 @@
+import psycopg2
+import json
+import os
+import logging
+import sys
+import requests
+import ffmpeg
+import speech_recognition as sr
+from typing import Dict, List, Any
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
     Application,
@@ -5,17 +14,14 @@ from telegram.ext import (
     MessageHandler,
     CallbackQueryHandler,
     filters,
-    ContextTypes
+    ContextTypes,
 )
-from config import TELEGRAM_TOKEN
-from nlp_processor import HousingCriteriaExtractor
-import logging, sys, os, requests, ffmpeg
-import speech_recognition as sr
 
 # Корректное добавление пути к модулям
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from nlp_processor import HousingCriteriaExtractor
 from services.url import find_flats
-
+from config import TELEGRAM_TOKEN, DATABASE_URL
 
 # Настройка логирования
 logging.basicConfig(
@@ -23,7 +29,6 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
-
 
 class HousingBot:
     SALE_TEXT = (
@@ -71,9 +76,66 @@ class HousingBot:
         self.nlp_processor = HousingCriteriaExtractor()
         self.user_contexts = {}
         self.recognizer = sr.Recognizer()
+        self.conn_str = DATABASE_URL
+        self.init_db()
+
+    def init_db(self) -> None:
+        """Инициализирует PostgreSQL базу данных."""
+        try:
+            with psycopg2.connect(self.conn_str) as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS users (
+                        user_id BIGINT PRIMARY KEY,
+                        username TEXT,
+                        requests JSONB
+                    )
+                """)
+                conn.commit()
+            logger.info("База данных инициализирована успешно")
+        except Exception as e:
+            logger.error(f"Ошибка инициализации базы данных: {e}")
+            raise
+
+    def get_user(self, user_id: int) -> Dict[str, Any]:
+        """Получает данные пользователя из базы."""
+        try:
+            with psycopg2.connect(self.conn_str) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT username, requests FROM users WHERE user_id = %s", (user_id,))
+                result = cursor.fetchone()
+                if result:
+                    return {
+                        "username": result[0],
+                        "requests": result[1] if result[1] else []
+                    }
+                return {"username": None, "requests": []}
+        except Exception as e:
+            logger.error(f"Ошибка получения данных пользователя {user_id}: {e}")
+            return {"username": None, "requests": []}
+
+    def save_user(self, user_id: int, username: str, requests: List[str]) -> None:
+        """Сохраняет данные пользователя в базу."""
+        try:
+            with psycopg2.connect(self.conn_str) as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT INTO users (user_id, username, requests)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (user_id) DO UPDATE
+                    SET username = EXCLUDED.username, requests = EXCLUDED.requests
+                """, (user_id, username, json.dumps(requests)))
+                conn.commit()
+        except Exception as e:
+            logger.error(f"Ошибка сохранения данных пользователя {user_id}: {e}")
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        welcome_text = (
+        user_id = update.effective_user.id
+        username = update.effective_user.username
+        user_data = self.get_user(user_id)
+        if not user_data["requests"]:
+            self.save_user(user_id, username, user_data["requests"])
+        await update.message.reply_text(
             "=== ВХОДЯЩЕЕ СООБЩЕНИЕ ОДОБРЕНО ===\n"
             "Гражданин.\n\n"
             "Ваше подключение к Системе ЖилРаспределения зарегистрировано.\n"
@@ -88,10 +150,9 @@ class HousingBot:
             "Министерство Благосостояния следит за вашей лояльностью.\n"
             "=== СООБЩЕНИЕ ЗАВЕРШЕНО ==="
         )
-        await update.message.reply_text(welcome_text)
 
     async def help(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        help_text = (
+        await update.message.reply_text(
             "=== ИНФОРМАЦИЯ УТВЕРЖДЕНА ===\n"
             "Гражданин.\n\n"
             "Вам предоставлен доступ к директивам Системы ЖилРаспределения:\n"
@@ -107,12 +168,13 @@ class HousingBot:
             "Министерство Правды наблюдает.\n"
             "=== КОНЕЦ ПЕРЕДАЧИ ==="
         )
-        await update.message.reply_text(help_text)
 
     async def reset(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         user_id = update.message.from_user.id
         self.user_contexts[user_id] = {}
-        reset_text = (
+        user_data = self.get_user(user_id)
+        self.save_user(user_id, user_data["username"], user_data["requests"])
+        await update.message.reply_text(
             "=== ПЕРЕЗАГРУЗКА ОДОБРЕНА ===\n"
             "Гражданин.\n\n"
             "Ваши параметры поиска аннулированы по приказу Системы.\n"
@@ -120,7 +182,6 @@ class HousingBot:
             "Министерство Благосостояния подтверждает вашу лояльность.\n"
             "=== ОПЕРАЦИЯ ЗАВЕРШЕНА ==="
         )
-        await update.message.reply_text(reset_text)
 
     async def sale(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text(self.SALE_TEXT, parse_mode="HTML")
@@ -132,12 +193,12 @@ class HousingBot:
         user_id = update.message.from_user.id
         user_context = self.user_contexts.get(user_id, {})
         flats = user_context.get("flats", [])
+        user_data = self.get_user(user_id)
 
-        logger.info(
-            f"Last results requested by user {user_id}. Context: {user_context}")
+        logger.info(f"Last results requested by user {user_id}. Context: {user_context}")
 
         if not flats:
-            no_results_text = (
+            await update.message.reply_text(
                 "=== РЕЗУЛЬТАТЫ ПОИСКА: НУЛЕВЫЕ ===\n"
                 "Гражданин.\n\n"
                 "Ваши предыдущие запросы не содержат данных.\n"
@@ -146,13 +207,11 @@ class HousingBot:
                 "\"Отсутствие результата — ваша ответственность.\"\n"
                 "=== СОЕДИНЕНИЕ ПРЕРВАНО ==="
             )
-            await update.message.reply_text(no_results_text)
             return
 
         for flat in flats:
             caption = flat.get("caption", "Нет описания")
-            safe_caption = caption[:1020] + \
-                "…" if len(caption) > 1024 else caption
+            safe_caption = caption[:1020] + "…" if len(caption) > 1024 else caption
             flat_text = (
                 "=== ОБЪЕКТ НАЙДЕН ===\n\n"
                 f"🏢 Описание объекта (одобрено ЖилПравдой):\n{safe_caption}\n\n"
@@ -178,10 +237,14 @@ class HousingBot:
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         user_id = update.message.from_user.id
+        username = update.effective_user.username
+        user_data = self.get_user(user_id)
 
         # Обработка текстового сообщения
         if update.message.text:
             user_input = update.message.text.strip()
+            user_data["requests"].append(user_input)
+            self.save_user(user_id, username, user_data["requests"])
             await self._process_text_input(update, user_id, user_input)
 
         # Обработка голосового сообщения
@@ -208,14 +271,14 @@ class HousingBot:
                 # Распознавание WAV
                 with sr.AudioFile("temp_voice.wav") as source:
                     audio = self.recognizer.record(source)
-                    user_input = self.recognizer.recognize_google(
-                        audio, language="ru-RU")
+                    user_input = self.recognizer.recognize_google(audio, language="ru-RU")
 
-                logger.info(
-                    f"Voice message from user {user_id} recognized as: {user_input}")
+                logger.info(f"Voice message from user {user_id} recognized as: {user_input}")
                 await update.message.reply_text(f"Распознанный запрос: {user_input}")
 
-                # Отправка распознанного текста в обработку как обычный текст
+                # Сохраняем голосовой запрос
+                user_data["requests"].append(user_input)
+                self.save_user(user_id, username, user_data["requests"])
                 await self._process_text_input(update, user_id, user_input)
 
             except sr.UnknownValueError:
@@ -227,8 +290,7 @@ class HousingBot:
                     "=== КОНЕЦ ДИАГНОСТИКИ ==="
                 )
             except Exception as e:
-                logger.error(
-                    f"Ошибка распознавания голоса для user {user_id}: {e}")
+                logger.error(f"Ошибка распознавания голоса для user {user_id}: {e}")
                 await update.message.reply_text(
                     "=== СИСТЕМНЫЙ СБОЙ ===\n"
                     "Гражданин.\n\n"
@@ -238,24 +300,21 @@ class HousingBot:
                 )
             finally:
                 # Удаление временных файлов
-                if os.path.exists("temp_voice.ogg"):
-                    os.remove("temp_voice.ogg")
-                if os.path.exists("temp_voice.wav"):
-                    os.remove("temp_voice.wav")
+                for temp_file in ["temp_voice.ogg", "temp_voice.wav"]:
+                    if os.path.exists(temp_file):
+                        os.remove(temp_file)
 
     async def _process_text_input(self, update: Update, user_id: int, user_input: str) -> None:
         try:
             prev_context = self.user_contexts.get(user_id, {})
             if "deal" not in prev_context:
                 prev_context["deal"] = "sale"
-            new_context = self.nlp_processor.extract_criteria(
-                user_input, prev_context)
+            new_context = self.nlp_processor.extract_criteria(user_input, prev_context)
             new_context["flats"] = prev_context.get("flats", [])
             self.user_contexts[user_id] = new_context
 
             logger.info(f"Updated context for user {user_id}: {new_context}")
 
-            # Всегда показываем критерии, если есть хоть какие-то данные
             summary = self._build_criteria_summary(new_context)
             if summary:
                 criteria_text = (
@@ -267,8 +326,7 @@ class HousingBot:
                     "Министерство Благосостояния ожидает вашего решения.\n"
                     "=== ОЖИДАНИЕ ПОДТВЕРЖДЕНИЯ ==="
                 )
-                keyboard = [[InlineKeyboardButton(
-                    "🔍 Активировать поиск", callback_data="search_now")]]
+                keyboard = [[InlineKeyboardButton("🔍 Активировать поиск", callback_data="search_now")]]
                 await update.message.reply_text(criteria_text, reply_markup=InlineKeyboardMarkup(keyboard))
             else:
                 await update.message.reply_text(
@@ -281,9 +339,8 @@ class HousingBot:
                 )
 
         except Exception as e:
-            logger.error(
-                f"Ошибка обработки сообщения от {user_id}: {e}", exc_info=True)
-            error_text = (
+            logger.error(f"Ошибка обработки сообщения от {user_id}: {e}", exc_info=True)
+            await update.message.reply_text(
                 "=== ОШИБКА ОБНАРУЖЕНА ===\n"
                 "Гражданин.\n\n"
                 "Ваш запрос признан несоответствующим стандартам ЖилПравды.\n"
@@ -296,22 +353,19 @@ class HousingBot:
                 "Министерство Правды следит за вами.\n"
                 "=== КОНЕЦ ДИАГНОСТИКИ ==="
             )
-            await update.message.reply_text(error_text)
 
     def _build_criteria_summary(self, criteria: dict) -> str:
         parts = []
         if criteria.get("location"):
             parts.append(f"Локация: {criteria['location'].capitalize()}")
         if criteria.get("rooms"):
-            parts.append(
-                f"Комнат: {criteria['rooms'] if criteria['rooms'] != 'st' else 'Студия'}")
+            parts.append(f"Комнат: {criteria['rooms'] if criteria['rooms'] != 'st' else 'Студия'}")
         if criteria.get("price"):
             parts.append(f"Максимальная стоимость: {criteria['price']:,} ₽")
         if criteria.get("area"):
             parts.append(f"Площадь: {criteria['area']} м²")
         if criteria.get("deal"):
-            parts.append(
-                f"Тип: {'Аренда' if criteria['deal'] == 'rent' else 'Покупка'}")
+            parts.append(f"Тип: {'Аренда' if criteria['deal'] == 'rent' else 'Покупка'}")
         return "\n".join(parts) if parts else ""
 
     async def _send_flats(self, target, criteria: dict) -> None:
@@ -327,11 +381,10 @@ class HousingBot:
             current_context["deal"] = "sale"
         current_context.update(criteria)
 
-        logger.info(
-            f"Sending flats for user {user_id}. Criteria: {current_context}")
+        logger.info(f"Sending flats for user {user_id}. Criteria: {current_context}")
 
         if not current_context.get("location"):
-            no_location_text = (
+            await reply_method(
                 "=== ОШИБКА ОБНАРУЖЕНА ===\n"
                 "Гражданин.\n\n"
                 "Ваш запрос признан неполным.\n"
@@ -344,7 +397,6 @@ class HousingBot:
                 "Министерство Правды фиксирует.\n"
                 "=== КОНЕЦ ДИАГНОСТИКИ ==="
             )
-            await reply_method(no_location_text)
             return
 
         try:
@@ -363,7 +415,7 @@ class HousingBot:
                  valid_flats[0].get("photo_url", "") == "")):
                 current_context["flats"] = []
                 self.user_contexts[user_id] = current_context
-                no_flats_text = (
+                await reply_method(
                     "=== ЖИЛПЛОЩАДЬ НЕ ОБНАРУЖЕНА ===\n"
                     "Гражданин.\n\n"
                     "По указанным параметрам объекты отсутствуют в реестре ЖилРаспределения.\n\n"
@@ -373,18 +425,15 @@ class HousingBot:
                     "Желание превыше возможностей — путь к диссидентству.\n"
                     "=== ПОИСК ПРЕРВАН ==="
                 )
-                await reply_method(no_flats_text)
                 return
 
             current_context["flats"] = valid_flats
             self.user_contexts[user_id] = current_context
-            logger.info(
-                f"Context updated with flats for user {user_id}: {self.user_contexts[user_id]}")
+            logger.info(f"Context updated with flats for user {user_id}: {self.user_contexts[user_id]}")
 
             for flat in valid_flats:
                 caption = flat.get("caption", "Нет описания")
-                safe_caption = caption[:1020] + \
-                    "…" if len(caption) > 1024 else caption
+                safe_caption = caption[:1020] + "…" if len(caption) > 1024 else caption
                 flat_text = (
                     "=== ОБЪЕКТ НАЙДЕН ===\n\n"
                     f"🏢 Описание объекта (одобрено ЖилПравдой):\n{safe_caption}\n\n"
@@ -404,9 +453,8 @@ class HousingBot:
             await self._send_flat_selection_keyboard(target, valid_flats)
 
         except Exception as e:
-            logger.error(
-                f"Ошибка в _send_flats для user {user_id}: {e}", exc_info=True)
-            error_text = (
+            logger.error(f"Ошибка в _send_flats для user {user_id}: {e}", exc_info=True)
+            await reply_method(
                 "=== СИСТЕМНЫЙ СБОЙ ===\n"
                 "Гражданин.\n\n"
                 "Обработка запроса прервана по техническим причинам.\n\n"
@@ -415,7 +463,6 @@ class HousingBot:
                 "Министерство Правды наблюдает.\n"
                 "=== СОЕДИНЕНИЕ ПРЕРВАНО ==="
             )
-            await reply_method(error_text)
 
     async def _send_map(self, target, flats: list) -> None:
         coords = [f"{flat['lon']},{flat['lat']},pm2rdl{i+1}"
@@ -433,24 +480,25 @@ class HousingBot:
     async def _send_flat_selection_keyboard(self, target, flats: list) -> None:
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(f"{i+1}", callback_data=f"flat_{i}")
                                         for i in range(len(flats))]])
-        selection_text = (
+        await target.message.reply_text(
             "=== ВЫБОР УТВЕРЖДЁН ===\n"
             "Гражданин.\n\n"
             "Для получения расширенных данных выберите номер объекта:\n"
             "Отказ от выбора приравнивается к мыслепреступлению.\n\n"
             "Министерство Благосостояния ждёт.\n"
-            "=== ОЖИДАНИЕ РЕШЕНИЯ ==="
+            "=== ОЖИДАНИЕ РЕШЕНИЯ ===",
+            reply_markup=keyboard
         )
-        await target.message.reply_text(selection_text, reply_markup=keyboard)
 
     async def handle_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         query = update.callback_query
         await query.answer()
         user_id = query.from_user.id
         user_context = self.user_contexts.get(user_id, {})
+        user_data = self.get_user(user_id)
+        self.save_user(user_id, user_data["username"], user_data["requests"])
 
-        logger.info(
-            f"Callback received for user {user_id}. Context: {user_context}")
+        logger.info(f"Callback received for user {user_id}. Context: {user_context}")
 
         try:
             if query.data == "search_now":
@@ -460,10 +508,9 @@ class HousingBot:
                 flats = user_context.get("flats", [])
                 if 0 <= idx < len(flats):
                     flat = flats[idx]
-                    details = flat.get("details") or flat.get(
-                        "caption", "Информация недоступна")
+                    details = flat.get("details") or flat.get("caption", "Информация недоступна")
                     deal_type = user_context.get("deal", "sale")
-                    full_details = (
+                    await query.message.reply_text(
                         "=== ПОВТОРНЫЙ ДОСТУП УТВЕРЖДЁН ===\n\n"
                         "Гражданин.\n"
                         "Ваш запрос на повторное рассмотрение объекта обработан.\n\n"
@@ -472,11 +519,11 @@ class HousingBot:
                         "! Внимание !\n"
                         "Частые запросы фиксируются как избыточная активность.\n"
                         "Министерство Благосостояния контролирует вашу дисциплину.\n"
-                        "=== ПЕРЕДАЧА ЗАВЕРШЕНА ==="
+                        "=== ПЕРЕДАЧА ЗАВЕРШЕНА ===",
+                        parse_mode="HTML"
                     )
-                    await query.message.reply_text(full_details, parse_mode="HTML")
                 else:
-                    not_found_text = (
+                    await query.message.reply_text(
                         "=== ОШИБКА ОБНАРУЖЕНА ===\n"
                         "Гражданин.\n\n"
                         "Запрошенный объект отсутствует в реестре ЖилПравды.\n\n"
@@ -486,11 +533,9 @@ class HousingBot:
                         "Министерство Правды фиксирует.\n"
                         "=== КОНЕЦ ДИАГНОСТИКИ ==="
                     )
-                    await query.message.reply_text(not_found_text)
         except Exception as e:
-            logger.error(
-                f"Ошибка в callback для {user_id}: {e}", exc_info=True)
-            error_text = (
+            logger.error(f"Ошибка в callback для {user_id}: {e}", exc_info=True)
+            await query.message.reply_text(
                 "=== СИСТЕМНЫЙ СБОЙ ===\n"
                 "Гражданин.\n\n"
                 "Обработка запроса прервана по техническим причинам.\n\n"
@@ -499,8 +544,6 @@ class HousingBot:
                 "Министерство Правды наблюдает.\n"
                 "=== СОЕДИНЕНИЕ ПРЕРВАНО ==="
             )
-            await query.message.reply_text(error_text)
-
 
 def main() -> None:
     try:
@@ -515,21 +558,17 @@ def main() -> None:
             CommandHandler("rent", bot.rent),
             CommandHandler("lastresults", bot.last_results),
             CallbackQueryHandler(bot.handle_callback),
-            MessageHandler(filters.TEXT & ~filters.COMMAND,
-                           bot.handle_message),
-            MessageHandler(filters.VOICE, bot.handle_message)
+            MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_message),
+            MessageHandler(filters.VOICE, bot.handle_message),
         ]
 
         for handler in handlers:
             app.add_handler(handler)
 
-        logger.info(
-            "----------------------- Бот запущен -----------------------")
+        logger.info("----------------------- Бот запущен -----------------------")
         app.run_polling()
     except Exception as e:
-        logger.critical(
-            f"Критическая ошибка при запуске бота: {e}", exc_info=True)
-
+        logger.critical(f"Критическая ошибка при запуске бота: {e}", exc_info=True)
 
 if __name__ == "__main__":
     main()
