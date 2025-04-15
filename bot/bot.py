@@ -1,15 +1,3 @@
-from messages import (
-    SALE_TEXT, RENT_TEXT, START_MESSAGE, HELP_MESSAGE, RESET_MESSAGE,
-    LAST_RESULTS_NO_FLATS, LAST_RESULTS_FLAT_TEXT, LAST_RESULTS_ERROR,
-    VOICE_PROCESSING, VOICE_RECOGNIZED, VOICE_UNRECOGNIZED, VOICE_ERROR,
-    CRITERIA_CONFIRMED, CRITERIA_INVALID, TEXT_PROCESSING_ERROR,
-    NO_LOCATION, NO_FLATS_FOUND, SEND_FLATS_ERROR,
-    MAP_CAPTION, FLAT_SELECTION,
-    CALLBACK_FLAT_DETAILS, CALLBACK_INVALID_FLAT, CALLBACK_ERROR
-)
-from config import TELEGRAM_TOKEN, DATABASE_URL
-from services.url import find_flats
-from nlp_processor import HousingCriteriaExtractor
 import psycopg2
 import json
 import os
@@ -28,9 +16,21 @@ from telegram.ext import (
     filters,
     ContextTypes,
 )
-
 # Корректное добавление пути к модулям
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from messages import (
+    SALE_TEXT, RENT_TEXT, START_MESSAGE, HELP_MESSAGE, RESET_MESSAGE,
+    LAST_RESULTS_NO_FLATS, LAST_RESULTS_FLAT_TEXT, LAST_RESULTS_ERROR,
+    VOICE_PROCESSING, VOICE_RECOGNIZED, VOICE_UNRECOGNIZED, VOICE_ERROR,
+    CRITERIA_CONFIRMED, CRITERIA_INVALID, TEXT_PROCESSING_ERROR,
+    NO_LOCATION, NO_FLATS_FOUND, SEND_FLATS_ERROR,
+    MAP_CAPTION, FLAT_SELECTION,
+    CALLBACK_FLAT_DETAILS, CALLBACK_INVALID_FLAT, CALLBACK_ERROR
+)
+from config import TELEGRAM_TOKEN, DATABASE_URL
+from services.url import find_flats
+from nlp_processor import HousingCriteriaExtractor
+
 
 # Настройка логирования
 logging.basicConfig(
