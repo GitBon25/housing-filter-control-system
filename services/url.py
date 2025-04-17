@@ -3,6 +3,7 @@ import logging
 
 
 def find_flats(rooms, price, area, location, deal):
+    """Ищет квартиры по заданным параметрам."""
     url1 = "https://geo-service.domclick.ru/research/api/v1/autocomplete/regions"
     params = {"name": location}
     headers = {

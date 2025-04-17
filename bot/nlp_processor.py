@@ -4,7 +4,9 @@ import pymorphy2
 import logging
 from typing import Dict, List, Optional, Tuple, Union
 
+
 logger = logging.getLogger(__name__)
+
 
 class HousingCriteriaExtractor:
     """Извлекает критерии поиска жилья из текста с использованием NLP."""
@@ -47,7 +49,7 @@ class HousingCriteriaExtractor:
         }
 
     def extract_criteria(self, text: str, context: Optional[Dict] = None) -> Dict:
-        """Извлекает критерии поиска из текста и обновляет существующий контекст."""
+        """Извлекает критерии поиска из текста и обновляет контекст."""
         if context is None:
             context = {}
         try:
@@ -82,7 +84,7 @@ class HousingCriteriaExtractor:
             return context.copy()
 
     def _has_deal_intent(self, text: str) -> bool:
-        """Проверяет наличие намерения аренды или покупки в тексте."""
+        """Проверяет наличие намерения аренды или покупки."""
         for patterns in self.intent_patterns.values():
             for pattern in patterns:
                 if re.search(pattern, text):
@@ -97,20 +99,22 @@ class HousingCriteriaExtractor:
         return doc
 
     def _get_normalized_spans(self, doc: Doc) -> List[Dict]:
-        """Нормализует именованные сущности в тексте."""
+        """Нормализует именованные сущности."""
         spans = []
         for span in doc.spans:
             span.normalize(self.morph_vocab)
             if span.type == "LOC":
                 span.normal = self._normalize_city_name(span.normal)
-            spans.append({"text": span.text, "normal": span.normal, "type": span.type})
+            spans.append(
+                {"text": span.text, "normal": span.normal, "type": span.type})
         return spans
 
     def _normalize_city_name(self, city: str) -> str:
         """Нормализует название города."""
         try:
             if "-" in city:
-                parts = [self.morph.parse(part)[0].normal_form for part in city.split("-")]
+                parts = [self.morph.parse(
+                    part)[0].normal_form for part in city.split("-")]
                 normalized = "-".join(parts)
             else:
                 normalized = self.morph.parse(city)[0].normal_form
@@ -128,7 +132,7 @@ class HousingCriteriaExtractor:
             return city
 
     def _extract_rooms(self, text: str) -> Union[int, str, None]:
-        """Извлекает количество комнат или тип 'студия' из текста."""
+        """Извлекает количество комнат или тип 'студия'."""
         word_to_num = {
             "одно": 1, "однушка": 1, "однушку": 1,
             "двух": 2, "двушка": 2, "двушку": 2,
@@ -138,17 +142,14 @@ class HousingCriteriaExtractor:
             "студия": "st", "студию": "st", "студийка": "st",
         }
 
-        # Сначала проверяем текстовые варианты
         for word, value in word_to_num.items():
             if word in text:
                 return value
 
-        # Затем проверяем числовые паттерны
         for pattern in self.rooms_patterns:
             match = re.search(pattern, text)
             if match:
                 matched_text = match.group(0)
-                # Исключаем пересечение с площадью
                 following_text = text[match.end():match.end() + 10].lower()
                 if not any(unit in following_text for unit in ["м²", "кв.м", "м.", "квадрат", "метр"]):
                     if matched_text in word_to_num:
@@ -158,7 +159,7 @@ class HousingCriteriaExtractor:
         return None
 
     def _extract_location(self, spans: List[Dict], text: str) -> Optional[str]:
-        """Извлекает местоположение из текста."""
+        """Извлекает местоположение."""
         for span in spans:
             if span["type"] == "LOC":
                 return span["normal"]
@@ -178,11 +179,12 @@ class HousingCriteriaExtractor:
         return None
 
     def _extract_price(self, text: str) -> Tuple[Optional[int], Optional[re.Match]]:
-        """Извлекает цену и её позицию в тексте."""
+        """Извлекает цену и её позицию."""
         for pattern in self.price_patterns:
             match = re.search(pattern, text)
             if match:
-                digits = match.group(1).replace(" ", "").replace(".", "").replace(",", "")
+                digits = match.group(1).replace(
+                    " ", "").replace(".", "").replace(",", "")
                 try:
                     amount = float(digits)
                     if "млн" in match.group(0) or "миллион" in match.group(0):
@@ -208,7 +210,7 @@ class HousingCriteriaExtractor:
         return None
 
     def _extract_deal_type(self, text: str) -> str:
-        """Определяет тип сделки (аренда или покупка)."""
+        """Определяет тип сделки."""
         for deal_type, patterns in self.intent_patterns.items():
             for pattern in patterns:
                 if re.search(pattern, text):

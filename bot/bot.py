@@ -16,7 +16,6 @@ from telegram.ext import (
     filters,
     ContextTypes,
 )
-# Корректное добавление пути к модулям
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from messages import (
     SALE_TEXT, RENT_TEXT, START_MESSAGE, HELP_MESSAGE, RESET_MESSAGE,
@@ -32,7 +31,6 @@ from services.url import find_flats
 from nlp_processor import HousingCriteriaExtractor
 
 
-# Настройка логирования
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
@@ -41,6 +39,8 @@ logger = logging.getLogger(__name__)
 
 
 class HousingBot:
+    """Основной класс бота для поиска жилья."""
+
     def __init__(self):
         self.nlp_processor = HousingCriteriaExtractor()
         self.user_contexts = {}
@@ -49,7 +49,7 @@ class HousingBot:
         self.init_db()
 
     def init_db(self) -> None:
-        """Инициализирует PostgreSQL базу данных."""
+        """Инициализирует базу данных PostgreSQL."""
         try:
             with psycopg2.connect(self.conn_str) as conn:
                 cursor = conn.cursor()
@@ -102,6 +102,7 @@ class HousingBot:
                 f"Ошибка сохранения данных пользователя {user_id}: {e}")
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Обрабатывает команду /start."""
         user_id = update.effective_user.id
         username = update.effective_user.username
         user_data = self.get_user(user_id)
@@ -110,9 +111,11 @@ class HousingBot:
         await update.message.reply_text(START_MESSAGE)
 
     async def help(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Обрабатывает команду /help."""
         await update.message.reply_text(HELP_MESSAGE)
 
     async def reset(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Обрабатывает команду /reset."""
         user_id = update.message.from_user.id
         self.user_contexts[user_id] = {}
         user_data = self.get_user(user_id)
@@ -120,12 +123,15 @@ class HousingBot:
         await update.message.reply_text(RESET_MESSAGE)
 
     async def sale(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Обрабатывает команду /sale."""
         await update.message.reply_text(SALE_TEXT, parse_mode="HTML")
 
     async def rent(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Обрабатывает команду /rent."""
         await update.message.reply_text(RENT_TEXT, parse_mode="HTML")
 
     async def last_results(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Обрабатывает команду /lastresults."""
         user_id = update.message.from_user.id
         user_context = self.user_contexts.get(user_id, {})
         flats = user_context.get("flats", [])
@@ -153,35 +159,30 @@ class HousingBot:
                 await update.message.reply_text(LAST_RESULTS_ERROR)
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Обрабатывает текстовые и голосовые сообщения."""
         user_id = update.message.from_user.id
         username = update.effective_user.username
         user_data = self.get_user(user_id)
 
-        # Обработка текстового сообщения
         if update.message.text:
             user_input = update.message.text.strip()
             user_data["requests"].append(user_input)
             self.save_user(user_id, username, user_data["requests"])
             await self._process_text_input(update, user_id, user_input)
 
-        # Обработка голосового сообщения
         elif update.message.voice:
             await update.message.reply_text(VOICE_PROCESSING, parse_mode=None)
             try:
-                # Получение голосового файла
                 file = await update.message.voice.get_file()
                 file_url = file.file_path
                 audio_data = requests.get(file_url).content
 
-                # Сохраняем временный OGG
                 with open("temp_voice.ogg", "wb") as f:
                     f.write(audio_data)
 
-                # Конвертация OGG → WAV через ffmpeg-python
                 ffmpeg.input("temp_voice.ogg").output(
                     "temp_voice.wav").run(quiet=True)
 
-                # Распознавание WAV
                 with sr.AudioFile("temp_voice.wav") as source:
                     audio = self.recognizer.record(source)
                     user_input = self.recognizer.recognize_google(
@@ -191,7 +192,6 @@ class HousingBot:
                     f"Voice message from user {user_id} recognized as: {user_input}")
                 await update.message.reply_text(VOICE_RECOGNIZED.format(text=user_input))
 
-                # Сохраняем голосовой запрос
                 user_data["requests"].append(user_input)
                 self.save_user(user_id, username, user_data["requests"])
                 await self._process_text_input(update, user_id, user_input)
@@ -203,12 +203,12 @@ class HousingBot:
                     f"Ошибка распознавания голоса для user {user_id}: {e}")
                 await update.message.reply_text(VOICE_ERROR)
             finally:
-                # Удаление временных файлов
                 for temp_file in ["temp_voice.ogg", "temp_voice.wav"]:
                     if os.path.exists(temp_file):
                         os.remove(temp_file)
 
     async def _process_text_input(self, update: Update, user_id: int, user_input: str) -> None:
+        """Обрабатывает текстовый ввод пользователя."""
         try:
             prev_context = self.user_contexts.get(user_id, {})
             if "deal" not in prev_context:
@@ -235,6 +235,7 @@ class HousingBot:
             await update.message.reply_text(TEXT_PROCESSING_ERROR)
 
     def _build_criteria_summary(self, criteria: dict) -> str:
+        """Формирует текстовое описание критериев поиска."""
         parts = []
         if criteria.get("location"):
             parts.append(f"Локация: {criteria['location'].capitalize()}")
@@ -251,6 +252,7 @@ class HousingBot:
         return "\n".join(parts) if parts else ""
 
     async def _send_flats(self, target, criteria: dict) -> None:
+        """Отправляет пользователю список найденных квартир."""
         if isinstance(target, Update):
             user_id = target.message.from_user.id
             reply_method = target.message.reply_text
@@ -316,6 +318,7 @@ class HousingBot:
             await reply_method(SEND_FLATS_ERROR)
 
     async def _send_map(self, target, flats: list) -> None:
+        """Отправляет карту с метками квартир."""
         coords = [f"{flat['lon']},{flat['lat']},pm2rdl{i+1}"
                   for i, flat in enumerate(flats)
                   if flat.get("lat") and flat.get("lon")]
@@ -331,11 +334,13 @@ class HousingBot:
                 logger.error(f"Ошибка отправки карты: {e}")
 
     async def _send_flat_selection_keyboard(self, target, flats: list) -> None:
+        """Отправляет клавиатуру для выбора квартиры."""
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(f"{i+1}", callback_data=f"flat_{i}")
                                         for i in range(len(flats))]])
         await target.message.reply_text(FLAT_SELECTION, reply_markup=keyboard)
 
     async def handle_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Обрабатывает callback-запросы."""
         query = update.callback_query
         await query.answer()
         user_id = query.from_user.id
@@ -370,8 +375,8 @@ class HousingBot:
                 f"Ошибка в callback для {user_id}: {e}", exc_info=True)
             await query.message.reply_text(CALLBACK_ERROR)
 
-
 def main() -> None:
+    """Запускает бота."""
     try:
         bot = HousingBot()
         app = Application.builder().token(TELEGRAM_TOKEN).build()
@@ -398,7 +403,6 @@ def main() -> None:
     except Exception as e:
         logger.critical(
             f"Критическая ошибка при запуске бота: {e}", exc_info=True)
-
 
 if __name__ == "__main__":
     main()
